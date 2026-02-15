@@ -3,6 +3,9 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# Project-specific files
+hasmartcharge.db* 
+
 # dotenv files
 .env
 
