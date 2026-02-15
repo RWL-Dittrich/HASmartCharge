@@ -9,7 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\HASmartChargeBackend\HASmartChargeBackend.csproj" />
+      <ProjectReference Include="..\HASmartCharge.Backend\HASmartCharge.Backend.csproj" />
     </ItemGroup>
 
 </Project>
