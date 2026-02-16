@@ -74,10 +74,16 @@ app.MapControllers();
     var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
     await connectionManager.InitializeAsync();
     
-    var apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
-    var devices = await apiService.GetDevicesAsync();
-    
-    Console.WriteLine(devices.Count);
+    try
+    {
+        var apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
+        var devices = await apiService.GetDevicesAsync();
+        Console.WriteLine($"Home Assistant devices found: {devices.Count}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Could not connect to Home Assistant: {ex.Message}");
+    }
 }
 
 app.Run();
