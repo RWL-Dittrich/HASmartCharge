@@ -8,6 +8,7 @@ namespace HASmartCharge.Backend.Controllers;
 /// Handles WebSocket connections from EV charge points
 /// </summary>
 [ApiController]
+[Route("/ocpp")]
 public class OcppController : ControllerBase
 {
     private readonly ILogger<OcppController> _logger;
@@ -21,10 +22,10 @@ public class OcppController : ControllerBase
 
     /// <summary>
     /// OCPP 1.6J WebSocket endpoint
-    /// Accepts WebSocket connections from charge points at ws://host:port/ocpp16/{chargePointId}
+    /// Accepts WebSocket connections from charge points at ws://host:port/ocpp/16/{chargePointId}
     /// </summary>
     /// <param name="chargePointId">Unique identifier for the charge point</param>
-    [Route("/ocpp16/{chargePointId}")]
+    [Route("16/{chargePointId}")]
     public async Task HandleWebSocket([FromRoute] string chargePointId)
     {
         if (HttpContext.WebSockets.IsWebSocketRequest)

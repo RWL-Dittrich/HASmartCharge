@@ -1,5 +1,6 @@
 using System.Text.Json;
 using HASmartCharge.Backend.OCPP.Models;
+using Microsoft.Extensions.Logging;
 
 namespace HASmartCharge.Backend.OCPP.Handlers;
 

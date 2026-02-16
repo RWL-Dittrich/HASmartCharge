@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="HASmartCharge.AppHost/HASmartCharge.AppHost.csproj" />
   <Project Path="HASmartCharge.Backend.DB/HASmartCharge.Backend.DB.csproj" />
+  <Project Path="HASmartCharge.Backend.OCPP/HASmartCharge.Backend.OCPP.csproj" />
   <Project Path="HASmartCharge.Backend/HASmartCharge.Backend.csproj" />
 </Solution>

@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using HASmartCharge.Backend.OCPP.Handlers;
 using HASmartCharge.Backend.OCPP.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HASmartCharge.Backend.OCPP.Services;
 

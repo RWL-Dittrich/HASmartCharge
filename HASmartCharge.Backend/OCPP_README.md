@@ -33,13 +33,13 @@ This is a **ground-up implementation** of the OCPP 1.6J protocol, built specific
 Charge points connect to the OCPP server using the following WebSocket URL format:
 
 ```
-ws://<hostname>:<port>/ocpp16/{chargePointId}
+ws://<hostname>:<port>/ocpp/16/{chargePointId}
 ```
 
 Or with TLS:
 
 ```
-wss://<hostname>:<port>/ocpp16/{chargePointId}
+wss://<hostname>:<port>/ocpp/16/{chargePointId}
 ```
 
 Where:
@@ -50,7 +50,7 @@ Where:
 For a charge point with ID `CP001` connecting to a server at `example.com:5000`:
 
 ```
-ws://example.com:5000/ocpp16/CP001
+ws://example.com:5000/ocpp/16/CP001
 ```
 
 ### Sub-protocol
@@ -125,7 +125,7 @@ You can test the OCPP server using a WebSocket client tool (like `wscat`):
 
 2. Connect to the server:
    ```bash
-   wscat -c "ws://localhost:5000/ocpp16/TEST001" -s ocpp1.6
+   wscat -c "ws://localhost:5000/ocpp/16/TEST001" -s ocpp1.6
    ```
 
 3. Send a BootNotification message:
@@ -169,13 +169,30 @@ OcppMessageHandler (routes messages to handlers)
 
 ### Implementation Components
 
+**Project Structure:**
+- **HASmartCharge.Backend.OCPP** - Separate class library project containing all OCPP logic
+  - Models: Individual files for each OCPP message type
+  - Handlers: Message routing and processing
+  - Services: WebSocket connection management
+
+**Key Files:**
+
 1. **OcppMessage.cs** - Core OCPP message parsing and serialization
    - Handles CALL (2), CALLRESULT (3), and CALLERROR (4) message types
    - JSON array format: `[MessageType, MessageId, Action, Payload]`
 
-2. **OcppModels.cs** - Request/Response models for all OCPP 1.6J messages
-   - Strongly-typed C# classes for all message payloads
-   - JSON serialization attributes for proper formatting
+2. **Individual Message Models** - Each OCPP message in its own file
+   - BootNotification.cs
+   - Authorize.cs
+   - StartTransaction.cs
+   - StopTransaction.cs
+   - MeterValues.cs
+   - StatusNotification.cs
+   - DataTransfer.cs
+   - DiagnosticsStatusNotification.cs
+   - FirmwareStatusNotification.cs
+   - Heartbeat.cs
+   - CommonTypes.cs (shared types like IdTagInfo, MeterValue, SampledValue)
 
 3. **OcppMessageHandler.cs** - Message routing and handler registration
    - Routes incoming messages to appropriate handlers
@@ -187,8 +204,9 @@ OcppMessageHandler (routes messages to handlers)
    - Processes incoming/outgoing messages
    - Implements all OCPP 1.6J message handlers
 
-5. **OcppController.cs** - ASP.NET Core WebSocket endpoint
-   - Accepts WebSocket connections
+5. **OcppController.cs** - ASP.NET Core WebSocket endpoint (in Backend project)
+   - Base route: `/ocpp`
+   - Accepts WebSocket connections at `/ocpp/16/{chargePointId}`
    - Validates sub-protocol
    - Delegates to OcppServerService
 
@@ -197,6 +215,7 @@ OcppMessageHandler (routes messages to handlers)
 **No external OCPP libraries required!** This is a pure C# implementation using only:
 - ASP.NET Core WebSocket support
 - System.Text.Json for JSON serialization
+- Microsoft.Extensions.Logging for logging
 - Standard .NET libraries
 
 ### Logging
