@@ -5,6 +5,8 @@ using HASmartCharge.Backend.Services;
 using HASmartCharge.Backend.Services.Auth;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
+using HASmartCharge.Backend.Services.Ocpp;
+using GoldsparkIT.OCPP;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,6 +39,10 @@ builder.Services.AddHostedService<TokenRefreshService>();
 // Register services
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 
+// Register OCPP services
+builder.Services.AddOcpp();
+builder.Services.AddSingleton<IOcppServerFactory, OcppServerFactory>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -46,6 +52,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Enable WebSockets middleware
+app.UseWebSockets();
 
 app.UseAuthorization();
 
