@@ -134,12 +134,20 @@ public class ChargerConnectionManager
             Type = type
         };
         
-        GetConfigurationRequest configRequest = new GetConfigurationRequest
-        {
-            Key = []
-        };
+        return await SendCommandAsync(chargePointId, "ChangeAvailability", request, cancellationToken);
+    }
 
-        return await SendCommandAsync(chargePointId, "GetConfiguration", configRequest, cancellationToken);
+    /// <summary>
+    /// Send a TriggerMessage command to request a BootNotification from a charge point
+    /// </summary>
+    public async Task<bool> TriggerBootNotificationAsync(string chargePointId, CancellationToken cancellationToken = default)
+    {
+        TriggerMessageRequest request = new TriggerMessageRequest
+        {
+            RequestedMessage = "BootNotification"
+        };
+        
+        return await SendCommandAsync(chargePointId, "TriggerMessage", request, cancellationToken);
     }
 }
 

@@ -42,6 +42,8 @@ builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 // Register OCPP services
 builder.Services.AddSingleton<WebSocketMessageService>();
 builder.Services.AddSingleton<ChargerConnectionManager>();
+builder.Services.AddSingleton<ChargerStatusTracker>();
+builder.Services.AddSingleton<ChargerConfigurationService>();
 builder.Services.AddSingleton<OcppServerService>();
 
 WebApplication app = builder.Build();
