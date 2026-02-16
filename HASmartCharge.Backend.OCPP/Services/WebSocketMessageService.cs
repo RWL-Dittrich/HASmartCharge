@@ -1,5 +1,7 @@
 using System.Net.WebSockets;
+using System.Runtime.InteropServices.ComTypes;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace HASmartCharge.Backend.OCPP.Services;
 
@@ -8,6 +10,13 @@ namespace HASmartCharge.Backend.OCPP.Services;
 /// </summary>
 public class WebSocketMessageService
 {
+    private readonly ILogger<WebSocketMessageService> _logger;
+    
+    public WebSocketMessageService(ILogger<WebSocketMessageService> logger)
+    {
+        _logger = logger;
+    }
+    
     /// <summary>
     /// Receives a complete message from the WebSocket
     /// </summary>
@@ -36,6 +45,7 @@ public class WebSocketMessageService
             }
 
             string messageText = Encoding.UTF8.GetString(messageBuffer.ToArray());
+            
             return messageText;
         }
 
@@ -51,7 +61,7 @@ public class WebSocketMessageService
         {
             throw new InvalidOperationException("WebSocket is not in Open state");
         }
-
+        
         byte[] messageBytes = Encoding.UTF8.GetBytes(message);
         await webSocket.SendAsync(
             new ArraySegment<byte>(messageBytes),

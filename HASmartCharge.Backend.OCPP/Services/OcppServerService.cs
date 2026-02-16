@@ -16,13 +16,15 @@ public class OcppServerService
     private readonly ILogger<OcppServerService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly WebSocketMessageService _webSocketMessageService;
+    private readonly ChargerConnectionManager _connectionManager;
     private readonly ConcurrentDictionary<string, int> _transactionCounters = new();
 
-    public OcppServerService(ILogger<OcppServerService> logger, IServiceProvider serviceProvider, WebSocketMessageService webSocketMessageService)
+    public OcppServerService(ILogger<OcppServerService> logger, IServiceProvider serviceProvider, WebSocketMessageService webSocketMessageService, ChargerConnectionManager connectionManager)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
         _webSocketMessageService = webSocketMessageService;
+        _connectionManager = connectionManager;
     }
 
     /// <summary>
@@ -31,6 +33,9 @@ public class OcppServerService
     public async Task HandleConnection(WebSocket webSocket, string chargePointId)
     {
         _logger.LogInformation("[{ChargePointId}] Charge point connected", chargePointId);
+
+        // Register the connection
+        _connectionManager.RegisterConnection(chargePointId, webSocket);
 
         OcppMessageHandler messageHandler = CreateMessageHandler(chargePointId);
         
@@ -44,6 +49,9 @@ public class OcppServerService
         }
         finally
         {
+            // Unregister the connection
+            _connectionManager.UnregisterConnection(chargePointId);
+
             if (webSocket.State == WebSocketState.Open)
             {
                 await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, 

@@ -41,6 +41,7 @@ builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 
 // Register OCPP services
 builder.Services.AddSingleton<WebSocketMessageService>();
+builder.Services.AddSingleton<ChargerConnectionManager>();
 builder.Services.AddSingleton<OcppServerService>();
 
 WebApplication app = builder.Build();
@@ -50,8 +51,6 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-
-app.UseHttpsRedirection();
 
 // Enable WebSockets middleware
 app.UseWebSockets();
