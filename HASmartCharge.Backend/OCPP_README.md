@@ -2,12 +2,18 @@
 
 ## Overview
 
-The HASmartCharge backend includes a full implementation of an OCPP 1.6J (Open Charge Point Protocol JSON over WebSocket) server. This allows electric vehicle charge points to connect and communicate with the system using the industry-standard OCPP protocol.
+The HASmartCharge backend includes a complete custom implementation of an OCPP 1.6J (Open Charge Point Protocol JSON over WebSocket) server built from scratch following the official OCPP specification. This allows electric vehicle charge points to connect and communicate with the system using the industry-standard OCPP protocol.
+
+## Implementation
+
+This is a **ground-up implementation** of the OCPP 1.6J protocol, built specifically for HASmartCharge without relying on third-party OCPP libraries. The implementation follows the official OCPP 1.6J specification and reference guides.
 
 ## Features
 
-- Full OCPP 1.6J schema support using the GoldsparkIT.OCPP library
+- **Full OCPP 1.6J protocol implementation** built from scratch
+- **Complete schema support** for all OCPP 1.6J message types
 - WebSocket-based communication with `ocpp1.6` sub-protocol
+- JSON message format with proper request/response handling
 - Support for all standard OCPP 1.6J messages:
   - **BootNotification**: Charge point registration and configuration
   - **Authorize**: RFID tag authorization
@@ -146,17 +152,52 @@ You can also use dedicated OCPP testing tools like:
 ```
 OcppController (WebSocket endpoint)
     ↓
-OcppServerFactory (creates server instances per connection)
+OcppServerService (manages connections and message handling)
     ↓
-OcppServer (handles OCPP messages)
-    ├── OcppWebSocketHandler (manages WebSocket communication)
-    └── JsonServerHandler (OCPP protocol handling from GoldsparkIT.OCPP)
+OcppMessageHandler (routes messages to handlers)
+    ├── BootNotification handler
+    ├── Authorize handler
+    ├── StartTransaction handler
+    ├── StopTransaction handler
+    ├── Heartbeat handler
+    ├── MeterValues handler
+    ├── StatusNotification handler
+    ├── DataTransfer handler
+    ├── DiagnosticsStatusNotification handler
+    └── FirmwareStatusNotification handler
 ```
+
+### Implementation Components
+
+1. **OcppMessage.cs** - Core OCPP message parsing and serialization
+   - Handles CALL (2), CALLRESULT (3), and CALLERROR (4) message types
+   - JSON array format: `[MessageType, MessageId, Action, Payload]`
+
+2. **OcppModels.cs** - Request/Response models for all OCPP 1.6J messages
+   - Strongly-typed C# classes for all message payloads
+   - JSON serialization attributes for proper formatting
+
+3. **OcppMessageHandler.cs** - Message routing and handler registration
+   - Routes incoming messages to appropriate handlers
+   - Generates properly formatted responses
+   - Error handling with OCPP error codes
+
+4. **OcppServerService.cs** - WebSocket connection management
+   - Manages WebSocket lifecycle
+   - Processes incoming/outgoing messages
+   - Implements all OCPP 1.6J message handlers
+
+5. **OcppController.cs** - ASP.NET Core WebSocket endpoint
+   - Accepts WebSocket connections
+   - Validates sub-protocol
+   - Delegates to OcppServerService
 
 ### Dependencies
 
-- **GoldsparkIT.OCPP** (v1.0.4): OCPP 1.6J protocol implementation
-- **GoldsparkIT.OCPP.Models** (v1.0.4): OCPP message models and schemas
+**No external OCPP libraries required!** This is a pure C# implementation using only:
+- ASP.NET Core WebSocket support
+- System.Text.Json for JSON serialization
+- Standard .NET libraries
 
 ### Logging
 
@@ -180,4 +221,5 @@ Planned features for future versions:
 
 - [OCPP 1.6J Specification](https://www.openchargealliance.org/protocols/ocpp-16/)
 - [OCPP 1.6 JSON Schemas](https://ocpp-spec.org/schemas/v1.6/)
-- [GoldsparkIT.OCPP on NuGet](https://www.nuget.org/packages/GoldsparkIT.OCPP)
+- [Complete OCPP 1.6 WebSocket Guide](https://gist.github.com/rohittiwari-dev/1bed980b1ca21e5a0a09c20bdfd7f9fa)
+- [OCPP.md Documentation](https://ocpp.md/ocpp-1.6j/)

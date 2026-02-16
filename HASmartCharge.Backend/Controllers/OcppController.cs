@@ -1,48 +1,45 @@
-using HASmartCharge.Backend.Services.Ocpp;
+using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;
 
+/// <summary>
+/// OCPP 1.6J WebSocket Controller
+/// Handles WebSocket connections from EV charge points
+/// </summary>
 [ApiController]
 public class OcppController : ControllerBase
 {
     private readonly ILogger<OcppController> _logger;
-    private readonly IOcppServerFactory _ocppServerFactory;
+    private readonly OcppServerService _ocppServer;
 
-    public OcppController(IOcppServerFactory ocppServerFactory, ILogger<OcppController> logger)
+    public OcppController(OcppServerService ocppServer, ILogger<OcppController> logger)
     {
-        _ocppServerFactory = ocppServerFactory;
+        _ocppServer = ocppServer;
         _logger = logger;
     }
 
     /// <summary>
-    /// OCPP 1.6J WebSocket endpoint for charge points to connect
+    /// OCPP 1.6J WebSocket endpoint
+    /// Accepts WebSocket connections from charge points at ws://host:port/ocpp16/{chargePointId}
     /// </summary>
-    /// <param name="chargePointId">The unique identifier of the charge point</param>
+    /// <param name="chargePointId">Unique identifier for the charge point</param>
     [Route("/ocpp16/{chargePointId}")]
-    public async Task Ocpp16WebSocket([FromRoute] string chargePointId)
+    public async Task HandleWebSocket([FromRoute] string chargePointId)
     {
         if (HttpContext.WebSockets.IsWebSocketRequest)
         {
-            _logger.LogInformation("Charge point connecting: {chargePointId}", chargePointId);
+            _logger.LogInformation("Charge point connection request: {ChargePointId}", chargePointId);
 
             using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
-
-            var ocppServer = _ocppServerFactory.CreateServer(chargePointId);
-            ocppServer.Start(webSocket);
-
-            // Keep the connection alive until the WebSocket is closed
-            while (webSocket.State == System.Net.WebSockets.WebSocketState.Open)
-            {
-                await Task.Delay(1000);
-            }
-
-            _logger.LogInformation("Charge point disconnected: {chargePointId}", chargePointId);
+            
+            await _ocppServer.HandleConnection(webSocket, chargePointId);
         }
         else
         {
-            _logger.LogWarning("Non-WebSocket request received for charge point: {chargePointId}", chargePointId);
+            _logger.LogWarning("Non-WebSocket request received for: {ChargePointId}", chargePointId);
             HttpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await HttpContext.Response.WriteAsync("WebSocket connection required");
         }
     }
 }
