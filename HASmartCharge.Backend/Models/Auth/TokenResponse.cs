@@ -1,13 +1,19 @@
-﻿namespace HASmartCharge.Backend.Models.Auth;
+﻿using System.Text.Json.Serialization;
+
+namespace HASmartCharge.Backend.Models.Auth;
 
 /// <summary>
 /// Response from Home Assistant token endpoint
 /// </summary>
 public class TokenResponse
 {
-    public required string access_token { get; set; }
-    public required string token_type { get; set; }
-    public required string refresh_token { get; set; }
-    public int expires_in { get; set; }
+    [JsonPropertyName("access_token")]
+    public required string AccessToken { get; set; }
+    [JsonPropertyName("token_type")]
+    public required string TokenType { get; set; }
+    [JsonPropertyName("refresh_token")]
+    public required string RefreshToken { get; set; }
+    [JsonPropertyName("expires_in")]
+    public int ExpiresIn { get; set; }
 }
 

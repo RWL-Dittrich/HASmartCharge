@@ -32,7 +32,7 @@ public class OcppServerService
     {
         _logger.LogInformation("[{ChargePointId}] Charge point connected", chargePointId);
 
-        var messageHandler = CreateMessageHandler(chargePointId);
+        OcppMessageHandler messageHandler = CreateMessageHandler(chargePointId);
         
         try
         {
@@ -59,7 +59,7 @@ public class OcppServerService
     {
         while (webSocket.State == WebSocketState.Open)
         {
-            var messageText = await _webSocketMessageService.ReceiveMessageAsync(webSocket);
+            string? messageText = await _webSocketMessageService.ReceiveMessageAsync(webSocket);
 
             if (messageText == null)
             {
@@ -67,7 +67,7 @@ public class OcppServerService
                 break;
             }
 
-            var response = await messageHandler.HandleMessage(messageText);
+            string response = await messageHandler.HandleMessage(messageText);
 
             if (!string.IsNullOrEmpty(response))
             {
@@ -78,8 +78,8 @@ public class OcppServerService
 
     private OcppMessageHandler CreateMessageHandler(string chargePointId)
     {
-        var logger = _serviceProvider.GetRequiredService<ILogger<OcppMessageHandler>>();
-        var handler = new OcppMessageHandler(chargePointId, logger);
+        ILogger<OcppMessageHandler> logger = _serviceProvider.GetRequiredService<ILogger<OcppMessageHandler>>();
+        OcppMessageHandler handler = new OcppMessageHandler(chargePointId, logger);
 
         // Register all OCPP 1.6J message handlers
         handler.RegisterHandler("BootNotification", async payload => 
@@ -119,7 +119,7 @@ public class OcppServerService
 
     private Task<object> HandleBootNotification(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
+        BootNotificationRequest? request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] BootNotification: Vendor={Vendor}, Model={Model}, Serial={Serial}",
             chargePointId, 
@@ -127,7 +127,7 @@ public class OcppServerService
             request?.ChargePointModel,
             request?.ChargePointSerialNumber);
 
-        var response = new BootNotificationResponse
+        BootNotificationResponse response = new BootNotificationResponse
         {
             Status = "Accepted",
             CurrentTime = DateTime.UtcNow,
@@ -141,7 +141,7 @@ public class OcppServerService
     {
         _logger.LogDebug("[{ChargePointId}] Heartbeat received", chargePointId);
 
-        var response = new HeartbeatResponse
+        HeartbeatResponse response = new HeartbeatResponse
         {
             CurrentTime = DateTime.UtcNow
         };
@@ -151,12 +151,12 @@ public class OcppServerService
 
     private Task<object> HandleAuthorize(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<AuthorizeRequest>(payload.GetRawText());
+        AuthorizeRequest? request = JsonSerializer.Deserialize<AuthorizeRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] Authorize: IdTag={IdTag}",
             chargePointId, request?.IdTag);
 
-        var response = new AuthorizeResponse
+        AuthorizeResponse response = new AuthorizeResponse
         {
             IdTagInfo = new IdTagInfo
             {
@@ -170,9 +170,9 @@ public class OcppServerService
 
     private Task<object> HandleStartTransaction(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<StartTransactionRequest>(payload.GetRawText());
+        StartTransactionRequest? request = JsonSerializer.Deserialize<StartTransactionRequest>(payload.GetRawText());
         
-        var transactionId = _transactionCounters.AddOrUpdate(chargePointId, 1, (key, value) => value + 1);
+        int transactionId = _transactionCounters.AddOrUpdate(chargePointId, 1, (key, value) => value + 1);
         
         _logger.LogInformation("[{ChargePointId}] StartTransaction: Connector={Connector}, IdTag={IdTag}, MeterStart={MeterStart}, TransactionId={TransactionId}",
             chargePointId, 
@@ -181,7 +181,7 @@ public class OcppServerService
             request?.MeterStart,
             transactionId);
 
-        var response = new StartTransactionResponse
+        StartTransactionResponse response = new StartTransactionResponse
         {
             TransactionId = transactionId,
             IdTagInfo = new IdTagInfo
@@ -196,7 +196,7 @@ public class OcppServerService
 
     private Task<object> HandleStopTransaction(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<StopTransactionRequest>(payload.GetRawText());
+        StopTransactionRequest? request = JsonSerializer.Deserialize<StopTransactionRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] StopTransaction: TransactionId={TransactionId}, IdTag={IdTag}, MeterStop={MeterStop}, Reason={Reason}",
             chargePointId, 
@@ -205,7 +205,7 @@ public class OcppServerService
             request?.MeterStop,
             request?.Reason);
 
-        var response = new StopTransactionResponse
+        StopTransactionResponse response = new StopTransactionResponse
         {
             IdTagInfo = new IdTagInfo
             {
@@ -218,7 +218,7 @@ public class OcppServerService
 
     private Task<object> HandleMeterValues(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<MeterValuesRequest>(payload.GetRawText());
+        MeterValuesRequest? request = JsonSerializer.Deserialize<MeterValuesRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] MeterValues: Connector={Connector}, TransactionId={TransactionId}, Values={ValueCount}",
             chargePointId, 
@@ -226,13 +226,13 @@ public class OcppServerService
             request?.TransactionId,
             request?.MeterValue?.Count ?? 0);
 
-        var response = new MeterValuesResponse();
+        MeterValuesResponse response = new MeterValuesResponse();
         return Task.FromResult<object>(response);
     }
 
     private Task<object> HandleStatusNotification(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<StatusNotificationRequest>(payload.GetRawText());
+        StatusNotificationRequest? request = JsonSerializer.Deserialize<StatusNotificationRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] StatusNotification: Connector={Connector}, Status={Status}, ErrorCode={ErrorCode}",
             chargePointId, 
@@ -240,20 +240,20 @@ public class OcppServerService
             request?.Status,
             request?.ErrorCode);
 
-        var response = new StatusNotificationResponse();
+        StatusNotificationResponse response = new StatusNotificationResponse();
         return Task.FromResult<object>(response);
     }
 
     private Task<object> HandleDataTransfer(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<DataTransferRequest>(payload.GetRawText());
+        DataTransferRequest? request = JsonSerializer.Deserialize<DataTransferRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] DataTransfer: VendorId={VendorId}, MessageId={MessageId}",
             chargePointId, 
             request?.VendorId, 
             request?.MessageId);
 
-        var response = new DataTransferResponse
+        DataTransferResponse response = new DataTransferResponse
         {
             Status = "Accepted"
         };
@@ -263,23 +263,23 @@ public class OcppServerService
 
     private Task<object> HandleDiagnosticsStatusNotification(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<DiagnosticsStatusNotificationRequest>(payload.GetRawText());
+        DiagnosticsStatusNotificationRequest? request = JsonSerializer.Deserialize<DiagnosticsStatusNotificationRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] DiagnosticsStatusNotification: Status={Status}",
             chargePointId, request?.Status);
 
-        var response = new DiagnosticsStatusNotificationResponse();
+        DiagnosticsStatusNotificationResponse response = new DiagnosticsStatusNotificationResponse();
         return Task.FromResult<object>(response);
     }
 
     private Task<object> HandleFirmwareStatusNotification(string chargePointId, JsonElement payload)
     {
-        var request = JsonSerializer.Deserialize<FirmwareStatusNotificationRequest>(payload.GetRawText());
+        FirmwareStatusNotificationRequest? request = JsonSerializer.Deserialize<FirmwareStatusNotificationRequest>(payload.GetRawText());
         
         _logger.LogInformation("[{ChargePointId}] FirmwareStatusNotification: Status={Status}",
             chargePointId, request?.Status);
 
-        var response = new FirmwareStatusNotificationResponse();
+        FirmwareStatusNotificationResponse response = new FirmwareStatusNotificationResponse();
         return Task.FromResult<object>(response);
     }
 }

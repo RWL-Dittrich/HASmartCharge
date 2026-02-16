@@ -13,12 +13,12 @@ public class WebSocketMessageService
     /// </summary>
     public async Task<string?> ReceiveMessageAsync(WebSocket webSocket, CancellationToken cancellationToken = default)
     {
-        var buffer = new byte[4096];
-        var messageBuffer = new List<byte>();
+        byte[] buffer = new byte[4096];
+        List<byte> messageBuffer = new List<byte>();
 
         while (webSocket.State == WebSocketState.Open)
         {
-            var result = await webSocket.ReceiveAsync(
+            WebSocketReceiveResult result = await webSocket.ReceiveAsync(
                 new ArraySegment<byte>(buffer), cancellationToken);
 
             if (result.MessageType == WebSocketMessageType.Close)
@@ -35,7 +35,7 @@ public class WebSocketMessageService
                 continue;
             }
 
-            var messageText = Encoding.UTF8.GetString(messageBuffer.ToArray());
+            string messageText = Encoding.UTF8.GetString(messageBuffer.ToArray());
             return messageText;
         }
 
@@ -52,7 +52,7 @@ public class WebSocketMessageService
             throw new InvalidOperationException("WebSocket is not in Open state");
         }
 
-        var messageBytes = Encoding.UTF8.GetBytes(message);
+        byte[] messageBytes = Encoding.UTF8.GetBytes(message);
         await webSocket.SendAsync(
             new ArraySegment<byte>(messageBytes),
             WebSocketMessageType.Text,

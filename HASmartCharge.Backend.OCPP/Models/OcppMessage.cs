@@ -24,13 +24,13 @@ public class OcppMessage
     
     public static OcppMessage Parse(string json)
     {
-        var array = JsonSerializer.Deserialize<JsonElement[]>(json);
+        JsonElement[]? array = JsonSerializer.Deserialize<JsonElement[]>(json);
         if (array == null || array.Length < 3)
         {
             throw new ArgumentException("Invalid OCPP message format");
         }
         
-        var message = new OcppMessage
+        OcppMessage message = new OcppMessage
         {
             MessageType = array[0].GetInt32(),
             MessageId = array[1].GetString() ?? string.Empty

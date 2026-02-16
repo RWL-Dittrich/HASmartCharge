@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -32,7 +33,7 @@ public class OcppController : ControllerBase
         {
             _logger.LogInformation("Charge point connection request: {ChargePointId}", chargePointId);
 
-            using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
+            using WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
             
             await _ocppServer.HandleConnection(webSocket, chargePointId);
         }

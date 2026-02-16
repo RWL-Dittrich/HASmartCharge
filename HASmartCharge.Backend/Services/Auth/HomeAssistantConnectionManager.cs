@@ -34,11 +34,11 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             
             // Load the first (and should be only) connection from the database
-            var connection = await dbContext.HomeAssistantConnections.FirstOrDefaultAsync();
+            HomeAssistantConnection? connection = await dbContext.HomeAssistantConnections.FirstOrDefaultAsync();
             
             if (connection != null)
             {
@@ -49,12 +49,12 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
                 }
                 
                 //Try accessing the HA instance to verify the token is still valid
-                var httpClient = _httpClientFactory.CreateClient();
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{connection.BaseUrl}/api/");
+                HttpClient httpClient = _httpClientFactory.CreateClient();
+                HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, $"{connection.BaseUrl}/api/");
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
                     connection.TokenType, connection.AccessToken);
                 
-                var response = await httpClient.SendAsync(request);
+                HttpResponseMessage response = await httpClient.SendAsync(request);
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogWarning("Failed to verify Home Assistant connection during initialization. Status: {StatusCode}. Clearing stored connection.", response.StatusCode);
@@ -104,11 +104,11 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             
             // Remove all existing connections (we only support one)
-            var existing = await dbContext.HomeAssistantConnections.ToListAsync();
+            List<HomeAssistantConnection> existing = await dbContext.HomeAssistantConnections.ToListAsync();
             if (existing.Any())
             {
                 dbContext.HomeAssistantConnections.RemoveRange(existing);
@@ -130,11 +130,11 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             
             // Find and update the existing connection
-            var existing = await dbContext.HomeAssistantConnections
+            HomeAssistantConnection? existing = await dbContext.HomeAssistantConnections
                 .FirstOrDefaultAsync(c => c.BaseUrl == connection.BaseUrl);
             
             if (existing != null)
@@ -165,11 +165,11 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
     {
         try
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             
             // Remove all connections
-            var existing = await dbContext.HomeAssistantConnections.ToListAsync();
+            List<HomeAssistantConnection> existing = await dbContext.HomeAssistantConnections.ToListAsync();
             if (existing.Any())
             {
                 dbContext.HomeAssistantConnections.RemoveRange(existing);
@@ -192,45 +192,45 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
         
         _logger.LogInformation("Exchanging authorization code for tokens with Home Assistant at {BaseUrl}", baseUrl);
         
-        var httpClient = _httpClientFactory.CreateClient();
+        HttpClient httpClient = _httpClientFactory.CreateClient();
         baseUrl = baseUrl.TrimEnd('/');
         
-        var tokenUrl = $"{baseUrl}/auth/token";
+        string tokenUrl = $"{baseUrl}/auth/token";
         
-        var requestBody = new Dictionary<string, string>
+        Dictionary<string, string> requestBody = new Dictionary<string, string>
         {
             { "grant_type", "authorization_code" },
             { "code", authorizationCode },
             { "client_id", clientId }
         };
         
-        var content = new FormUrlEncodedContent(requestBody);
+        FormUrlEncodedContent content = new FormUrlEncodedContent(requestBody);
         
         try
         {
-            var response = await httpClient.PostAsync(tokenUrl, content);
+            HttpResponseMessage response = await httpClient.PostAsync(tokenUrl, content);
             
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
+                string errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogError("Token exchange failed with status {StatusCode}: {Error}", 
                     response.StatusCode, errorContent);
                 throw new Exception($"Failed to exchange authorization code: {response.StatusCode}");
             }
             
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent)
+            string responseContent = await response.Content.ReadAsStringAsync();
+            TokenResponse tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent)
                 ?? throw new Exception("Failed to deserialize token response");
             
-            var now = DateTime.UtcNow;
-            var connection = new HomeAssistantConnection
+            DateTime now = DateTime.UtcNow;
+            HomeAssistantConnection connection = new HomeAssistantConnection
             {
                 BaseUrl = baseUrl,
-                AccessToken = tokenResponse.access_token,
-                RefreshToken = tokenResponse.refresh_token,
-                TokenType = tokenResponse.token_type,
-                ExpiresIn = tokenResponse.expires_in,
-                ExpiresAt = now.AddSeconds(tokenResponse.expires_in),
+                AccessToken = tokenResponse.AccessToken,
+                RefreshToken = tokenResponse.RefreshToken,
+                TokenType = tokenResponse.TokenType,
+                ExpiresIn = tokenResponse.ExpiresIn,
+                ExpiresAt = now.AddSeconds(tokenResponse.ExpiresIn),
                 ConnectedAt = now,
                 LastRefreshedAt = now
             };
@@ -326,25 +326,25 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
         
         _logger.LogInformation("Refreshing access token for Home Assistant at {BaseUrl}", connection.BaseUrl);
         
-        var httpClient = _httpClientFactory.CreateClient();
-        var tokenUrl = $"{connection.BaseUrl}/auth/token";
+        HttpClient httpClient = _httpClientFactory.CreateClient();
+        string tokenUrl = $"{connection.BaseUrl}/auth/token";
         
-        var requestBody = new Dictionary<string, string>
+        Dictionary<string, string> requestBody = new Dictionary<string, string>
         {
             { "grant_type", "refresh_token" },
             { "refresh_token", connection.RefreshToken },
             { "client_id", connection.BaseUrl } // Client ID should be the base URL
         };
         
-        var content = new FormUrlEncodedContent(requestBody);
+        FormUrlEncodedContent content = new FormUrlEncodedContent(requestBody);
         
         try
         {
-            var response = await httpClient.PostAsync(tokenUrl, content);
+            HttpResponseMessage response = await httpClient.PostAsync(tokenUrl, content);
             
             if (!response.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
+                string errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogError("Token refresh failed with status {StatusCode}: {Error}", 
                     response.StatusCode, errorContent);
                 
@@ -353,21 +353,21 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
                 throw new Exception($"Failed to refresh token: {response.StatusCode}");
             }
             
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent)
+            string responseContent = await response.Content.ReadAsStringAsync();
+            TokenResponse tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent)
                 ?? throw new Exception("Failed to deserialize token response");
             
-            var now = DateTime.UtcNow;
+            DateTime now = DateTime.UtcNow;
             
             lock (_lock)
             {
                 if (_connection != null)
                 {
-                    _connection.AccessToken = tokenResponse.access_token;
-                    _connection.RefreshToken = tokenResponse.refresh_token;
-                    _connection.TokenType = tokenResponse.token_type;
-                    _connection.ExpiresIn = tokenResponse.expires_in;
-                    _connection.ExpiresAt = now.AddSeconds(tokenResponse.expires_in);
+                    _connection.AccessToken = tokenResponse.AccessToken;
+                    _connection.RefreshToken = tokenResponse.RefreshToken;
+                    _connection.TokenType = tokenResponse.TokenType;
+                    _connection.ExpiresIn = tokenResponse.ExpiresIn;
+                    _connection.ExpiresAt = now.AddSeconds(tokenResponse.ExpiresIn);
                     _connection.LastRefreshedAt = now;
                     
                     connection = _connection;
@@ -381,7 +381,7 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
             }
             
             _logger.LogInformation("Successfully refreshed access token. New token expires at {ExpiresAt}", 
-                now.AddSeconds(tokenResponse.expires_in));
+                now.AddSeconds(tokenResponse.ExpiresIn));
         }
         catch (Exception ex)
         {

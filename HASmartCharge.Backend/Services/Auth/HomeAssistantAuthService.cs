@@ -2,7 +2,6 @@
 using HASmartCharge.Backend.Configuration;
 using HASmartCharge.Backend.Models.Auth;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
-using HASmartCharge.Backend.Models;
 using Microsoft.Extensions.Options;
 
 namespace HASmartCharge.Backend.Services.Auth;
@@ -29,10 +28,10 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
         baseUrl = baseUrl.TrimEnd('/');
         
         // Generate cryptographically secure random state
-        var state = GenerateSecureState();
+        string state = GenerateSecureState();
         
         // Store the state
-        var authState = new AuthState
+        AuthState authState = new AuthState
         {
             State = state,
             BaseUrl = baseUrl,
@@ -43,7 +42,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
         _authStateStore.StoreState(authState);
         
         // Build the authorization URL
-        var authUrl = $"{baseUrl}/auth/authorize?" +
+        string authUrl = $"{baseUrl}/auth/authorize?" +
                       $"client_id={Uri.EscapeDataString(clientId)}&" +
                       $"redirect_uri={Uri.EscapeDataString(redirectUri)}&" +
                       $"state={Uri.EscapeDataString(state)}";
@@ -56,7 +55,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
 
     public bool ValidateAndStoreAuthorizationCode(string state, string authorizationCode)
     {
-        var authState = _authStateStore.GetState(state);
+        AuthState? authState = _authStateStore.GetState(state);
         
         if (authState == null)
         {
@@ -64,7 +63,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
             return false;
         }
         
-        var success = _authStateStore.UpdateAuthorizationCode(state, authorizationCode);
+        bool success = _authStateStore.UpdateAuthorizationCode(state, authorizationCode);
         
         if (success)
         {
@@ -76,7 +75,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
 
     public string? GetAuthorizationCode(string state)
     {
-        var authState = _authStateStore.GetState(state);
+        AuthState? authState = _authStateStore.GetState(state);
         return authState?.AuthorizationCode;
     }
     
@@ -87,7 +86,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
 
     private static string GenerateSecureState()
     {
-        var bytes = new byte[32];
+        byte[] bytes = new byte[32];
         RandomNumberGenerator.Fill(bytes);
         return Convert.ToBase64String(bytes)
             .Replace("+", "-")

@@ -42,7 +42,7 @@ public class OcppMessageHandler
         {
             _logger.LogDebug("[{ChargePointId}] Received: {Message}", _chargePointId, jsonMessage);
 
-            var message = OcppMessage.Parse(jsonMessage);
+            OcppMessage message = OcppMessage.Parse(jsonMessage);
 
             if (message.MessageType == (int)OcppMessageType.Call)
             {
@@ -67,7 +67,7 @@ public class OcppMessageHandler
         {
             _logger.LogError(ex, "[{ChargePointId}] Error handling message", _chargePointId);
             
-            var errorMessage = new OcppErrorMessage
+            OcppErrorMessage errorMessage = new OcppErrorMessage
             {
                 MessageId = "error",
                 ErrorCode = "InternalError",
@@ -81,14 +81,14 @@ public class OcppMessageHandler
 
     private async Task<string> HandleCall(OcppMessage message)
     {
-        var action = message.Action ?? string.Empty;
+        string action = message.Action ?? string.Empty;
 
         if (!_handlers.ContainsKey(action))
         {
             _logger.LogWarning("[{ChargePointId}] No handler for action: {Action}", 
                 _chargePointId, action);
             
-            var errorMessage = new OcppErrorMessage
+            OcppErrorMessage errorMessage = new OcppErrorMessage
             {
                 MessageId = message.MessageId,
                 ErrorCode = "NotImplemented",
@@ -101,17 +101,17 @@ public class OcppMessageHandler
 
         try
         {
-            var handler = _handlers[action];
-            var response = await handler(message.Payload);
+            OcppRequestHandler handler = _handlers[action];
+            object response = await handler(message.Payload);
 
-            var responseMessage = new OcppMessage
+            OcppMessage responseMessage = new OcppMessage
             {
                 MessageType = (int)OcppMessageType.CallResult,
                 MessageId = message.MessageId,
                 Payload = JsonSerializer.SerializeToElement(response)
             };
 
-            var responseJson = responseMessage.ToJson();
+            string responseJson = responseMessage.ToJson();
             _logger.LogDebug("[{ChargePointId}] Sending: {Response}", _chargePointId, responseJson);
             
             return responseJson;
@@ -121,7 +121,7 @@ public class OcppMessageHandler
             _logger.LogError(ex, "[{ChargePointId}] Error executing handler for {Action}", 
                 _chargePointId, action);
             
-            var errorMessage = new OcppErrorMessage
+            OcppErrorMessage errorMessage = new OcppErrorMessage
             {
                 MessageId = message.MessageId,
                 ErrorCode = "InternalError",

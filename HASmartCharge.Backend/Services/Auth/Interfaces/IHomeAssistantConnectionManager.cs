@@ -1,5 +1,4 @@
 ﻿using HASmartCharge.Backend.DB.Models;
-using HASmartCharge.Backend.Models.Auth;
 
 namespace HASmartCharge.Backend.Services.Auth.Interfaces;
 
