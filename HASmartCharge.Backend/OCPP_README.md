@@ -33,13 +33,13 @@ This is a **ground-up implementation** of the OCPP 1.6J protocol, built specific
 Charge points connect to the OCPP server using the following WebSocket URL format:
 
 ```
-ws://<hostname>:<port>/ocpp/16/{chargePointId}
+ws://<hostname>:<port>/ocpp/1.6/{chargePointId}
 ```
 
 Or with TLS:
 
 ```
-wss://<hostname>:<port>/ocpp/16/{chargePointId}
+wss://<hostname>:<port>/ocpp/1.6/{chargePointId}
 ```
 
 Where:
@@ -50,7 +50,7 @@ Where:
 For a charge point with ID `CP001` connecting to a server at `example.com:5000`:
 
 ```
-ws://example.com:5000/ocpp/16/CP001
+ws://example.com:5000/ocpp/1.6/CP001
 ```
 
 ### Sub-protocol
@@ -125,7 +125,7 @@ You can test the OCPP server using a WebSocket client tool (like `wscat`):
 
 2. Connect to the server:
    ```bash
-   wscat -c "ws://localhost:5000/ocpp/16/TEST001" -s ocpp1.6
+   wscat -c "ws://localhost:5000/ocpp/1.6/TEST001" -s ocpp1.6
    ```
 
 3. Send a BootNotification message:
@@ -206,7 +206,7 @@ OcppMessageHandler (routes messages to handlers)
 
 5. **OcppController.cs** - ASP.NET Core WebSocket endpoint (in Backend project)
    - Base route: `/ocpp`
-   - Accepts WebSocket connections at `/ocpp/16/{chargePointId}`
+   - Accepts WebSocket connections at `/ocpp/1.6/{chargePointId}`
    - Validates sub-protocol
    - Delegates to OcppServerService
 

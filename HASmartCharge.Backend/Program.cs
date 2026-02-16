@@ -39,6 +39,7 @@ builder.Services.AddHostedService<TokenRefreshService>();
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 
 // Register OCPP services
+builder.Services.AddSingleton<WebSocketMessageService>();
 builder.Services.AddSingleton<OcppServerService>();
 
 var app = builder.Build();

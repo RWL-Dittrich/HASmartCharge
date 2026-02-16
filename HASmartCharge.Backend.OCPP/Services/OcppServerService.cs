@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
 using HASmartCharge.Backend.OCPP.Handlers;
 using HASmartCharge.Backend.OCPP.Models;
@@ -10,18 +9,20 @@ using Microsoft.Extensions.DependencyInjection;
 namespace HASmartCharge.Backend.OCPP.Services;
 
 /// <summary>
-/// OCPP 1.6J Server service that handles WebSocket connections and OCPP protocol
+/// OCPP 1.6J Server service that handles OCPP protocol logic
 /// </summary>
 public class OcppServerService
 {
     private readonly ILogger<OcppServerService> _logger;
     private readonly IServiceProvider _serviceProvider;
+    private readonly WebSocketMessageService _webSocketMessageService;
     private readonly ConcurrentDictionary<string, int> _transactionCounters = new();
 
-    public OcppServerService(ILogger<OcppServerService> logger, IServiceProvider serviceProvider)
+    public OcppServerService(ILogger<OcppServerService> logger, IServiceProvider serviceProvider, WebSocketMessageService webSocketMessageService)
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
+        _webSocketMessageService = webSocketMessageService;
     }
 
     /// <summary>
@@ -56,41 +57,21 @@ public class OcppServerService
     private async Task ProcessMessages(WebSocket webSocket, string chargePointId, 
         OcppMessageHandler messageHandler)
     {
-        var buffer = new byte[4096];
-        var messageBuffer = new List<byte>();
-
         while (webSocket.State == WebSocketState.Open)
         {
-            var result = await webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer), CancellationToken.None);
+            var messageText = await _webSocketMessageService.ReceiveMessageAsync(webSocket);
 
-            if (result.MessageType == WebSocketMessageType.Close)
+            if (messageText == null)
             {
-                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, 
-                    "Client closing connection", CancellationToken.None);
+                // Connection closed
                 break;
             }
-
-            messageBuffer.AddRange(buffer.Take(result.Count));
-
-            if (!result.EndOfMessage)
-            {
-                continue;
-            }
-
-            var messageText = Encoding.UTF8.GetString(messageBuffer.ToArray());
-            messageBuffer.Clear();
 
             var response = await messageHandler.HandleMessage(messageText);
 
             if (!string.IsNullOrEmpty(response))
             {
-                var responseBytes = Encoding.UTF8.GetBytes(response);
-                await webSocket.SendAsync(
-                    new ArraySegment<byte>(responseBytes),
-                    WebSocketMessageType.Text,
-                    true,
-                    CancellationToken.None);
+                await _webSocketMessageService.SendMessageAsync(webSocket, response);
             }
         }
     }

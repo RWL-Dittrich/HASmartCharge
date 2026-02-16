@@ -22,10 +22,10 @@ public class OcppController : ControllerBase
 
     /// <summary>
     /// OCPP 1.6J WebSocket endpoint
-    /// Accepts WebSocket connections from charge points at ws://host:port/ocpp/16/{chargePointId}
+    /// Accepts WebSocket connections from charge points at ws://host:port/ocpp/1.6/{chargePointId}
     /// </summary>
     /// <param name="chargePointId">Unique identifier for the charge point</param>
-    [Route("16/{chargePointId}")]
+    [Route("1.6/{chargePointId}")]
     public async Task HandleWebSocket([FromRoute] string chargePointId)
     {
         if (HttpContext.WebSockets.IsWebSocketRequest)
