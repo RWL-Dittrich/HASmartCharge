@@ -331,36 +331,6 @@ Configuration is applied **after BootNotification** is received:
 
 This ensures the charge point is fully initialized before we attempt configuration.
 
-### Architecture
-
-```
-OcppController (WebSocket endpoint)
-    ↓
-OcppServerService (manages connections and message handling)
-    ↓
-OcppMessageHandler (routes messages to handlers)
-    ├── BootNotification handler
-    ├── Authorize handler
-    ├── StartTransaction handler
-    ├── StopTransaction handler
-    ├── Heartbeat handler
-    ├── MeterValues handler
-    ├── StatusNotification handler
-    ├── DataTransfer handler
-    ├── DiagnosticsStatusNotification handler
-    └── FirmwareStatusNotification handler
-```
-
-### Legacy Components (Deprecated)
-
-The following components are maintained for backward compatibility but will be removed:
-
-- `Services/OcppServerService.cs` - Original monolithic service (replaced by layered architecture)
-- `Handlers/OcppMessageHandler.cs` - Original message handler (replaced by OcppMessageRouter + ChargePointSession)
-- `Services/ChargerConnectionManager.cs` - Original connection manager (replaced by SessionManager)
-
-These are still registered in DI but are no longer used by the active endpoint.
-
 ### Implementation Components
 
 **Project Structure:**
@@ -371,7 +341,6 @@ These are still registered in DI but are no longer used by the active endpoint.
   - **Infrastructure/**: Orchestration and cross-cutting concerns (OcppConnectionOrchestrator)
   - **Models/**: Individual files for each OCPP message type
   - **Services/**: Shared services (ChargerStatusTracker, ChargerConfigurationService, WebSocketMessageService)
-  - **Handlers/**: Legacy components (deprecated)
 
 **Key Files:**
 
