@@ -1,6 +1,5 @@
-﻿using HASmartCharge.Backend.Services.Auth.Interfaces;
-using HASmartCharge.Backend.Services;
-using HASmartCharge.Backend.Services.Auth;
+﻿using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Backend.Services.Auth.Interfaces;
 
 namespace HASmartCharge.Backend.BackgroundServices;
 
@@ -31,15 +30,15 @@ public class TokenRefreshService : BackgroundService
             {
                 await Task.Delay(_checkInterval, stoppingToken);
                 
-                using var scope = _serviceProvider.CreateScope();
-                var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
+                using IServiceScope scope = _serviceProvider.CreateScope();
+                IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
                 
                 if (connectionManager.IsConnected())
                 {
-                    var connection = connectionManager.GetConnection();
+                    HomeAssistantConnection? connection = connectionManager.GetConnection();
                     if (connection != null)
                     {
-                        var timeUntilExpiry = connection.ExpiresAt - DateTime.UtcNow;
+                        TimeSpan timeUntilExpiry = connection.ExpiresAt - DateTime.UtcNow;
                         
                         // Refresh if token expires in less than 10 minutes
                         if (timeUntilExpiry.TotalMinutes < 10)

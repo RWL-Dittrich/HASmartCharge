@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using HASmartCharge.Backend.Models.Auth;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
-using HASmartCharge.Backend.Models;
 
 namespace HASmartCharge.Backend.Services.Auth;
 
@@ -23,7 +22,7 @@ public class InMemoryAuthStateStore : IAuthStateStore
 
     public AuthState? GetState(string state)
     {
-        if (_states.TryGetValue(state, out var authState))
+        if (_states.TryGetValue(state, out AuthState? authState))
         {
             if (authState.ExpiresAt > DateTime.UtcNow)
             {
@@ -48,7 +47,7 @@ public class InMemoryAuthStateStore : IAuthStateStore
 
     public bool UpdateAuthorizationCode(string state, string authorizationCode)
     {
-        if (_states.TryGetValue(state, out var authState))
+        if (_states.TryGetValue(state, out AuthState? authState))
         {
             authState.AuthorizationCode = authorizationCode;
             _logger.LogInformation("Updated authorization code for state token: {State}", state);
@@ -61,12 +60,12 @@ public class InMemoryAuthStateStore : IAuthStateStore
 
     public void CleanupExpiredStates()
     {
-        var expiredStates = _states
+        List<string> expiredStates = _states
             .Where(kvp => kvp.Value.ExpiresAt <= DateTime.UtcNow)
             .Select(kvp => kvp.Key)
             .ToList();
 
-        foreach (var state in expiredStates)
+        foreach (string state in expiredStates)
         {
             _states.TryRemove(state, out _);
         }

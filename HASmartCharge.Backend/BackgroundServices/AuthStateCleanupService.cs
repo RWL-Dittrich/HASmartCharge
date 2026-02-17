@@ -1,6 +1,4 @@
 ﻿using HASmartCharge.Backend.Services.Auth.Interfaces;
-using HASmartCharge.Backend.Services;
-using HASmartCharge.Backend.Services.Auth;
 
 namespace HASmartCharge.Backend.BackgroundServices;
 

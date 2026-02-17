@@ -1,4 +1,5 @@
-﻿using HASmartCharge.Backend.Models.HomeAssistant;
+﻿using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Backend.Models.HomeAssistant;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
 
@@ -20,21 +21,21 @@ public class HomeAssistantApiService : IHomeAssistantApiService
     //Get devices
     public async Task<List<HaEntity>> GetDevicesAsync()
     {
-        var connection = _connectionManager.GetConnection();
+        HomeAssistantConnection? connection = _connectionManager.GetConnection();
         if (connection == null)
         {
             throw new Exception("Connection not found");
         }
         
-        var client = _httpClientFactory.CreateClient();
+        HttpClient client = _httpClientFactory.CreateClient();
         client.BaseAddress = new Uri(connection.BaseUrl);
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", connection.AccessToken);
         
-        var response = await client.GetAsync("/api/states");
+        HttpResponseMessage response = await client.GetAsync("/api/states");
         response.EnsureSuccessStatusCode();
         
-        var content = await response.Content.ReadAsStringAsync();
-        var entities = System.Text.Json.JsonSerializer.Deserialize<List<HaEntity>>(content, new System.Text.Json.JsonSerializerOptions
+        string content = await response.Content.ReadAsStringAsync();
+        List<HaEntity>? entities = System.Text.Json.JsonSerializer.Deserialize<List<HaEntity>>(content, new System.Text.Json.JsonSerializerOptions
         {
             PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
             PropertyNameCaseInsensitive = true

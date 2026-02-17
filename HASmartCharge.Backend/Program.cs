@@ -1,13 +1,15 @@
 using HASmartCharge.Backend.BackgroundServices;
 using HASmartCharge.Backend.Configuration;
 using HASmartCharge.Backend.DB;
+using HASmartCharge.Backend.Models.HomeAssistant;
 using HASmartCharge.Backend.Services;
 using HASmartCharge.Backend.Services.Auth;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
+using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
@@ -37,7 +39,14 @@ builder.Services.AddHostedService<TokenRefreshService>();
 // Register services
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 
-var app = builder.Build();
+// Register OCPP services
+builder.Services.AddSingleton<WebSocketMessageService>();
+builder.Services.AddSingleton<ChargerConnectionManager>();
+builder.Services.AddSingleton<ChargerStatusTracker>();
+builder.Services.AddSingleton<ChargerConfigurationService>();
+builder.Services.AddSingleton<OcppServerService>();
+
+WebApplication app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -45,15 +54,16 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// Enable WebSockets middleware
+app.UseWebSockets();
 
 app.UseAuthorization();
 
 app.MapControllers();
 
 {
-    using var scope = app.Services.CreateScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    using IServiceScope scope = app.Services.CreateScope();
+    ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     
     //Do migrations here 
     if((await dbContext.Database.GetPendingMigrationsAsync()).Any())
@@ -62,13 +72,19 @@ app.MapControllers();
     }
     
     // Initialize the Home Assistant connection manager
-    var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
+    IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
     await connectionManager.InitializeAsync();
     
-    var apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
-    var devices = await apiService.GetDevicesAsync();
-    
-    Console.WriteLine(devices.Count);
+    try
+    {
+        IHomeAssistantApiService apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
+        List<HaEntity> devices = await apiService.GetDevicesAsync();
+        Console.WriteLine($"Home Assistant devices found: {devices.Count}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Warning: Could not connect to Home Assistant: {ex.Message}");
+    }
 }
 
 app.Run();
