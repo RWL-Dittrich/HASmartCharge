@@ -39,11 +39,21 @@ builder.Services.AddHostedService<TokenRefreshService>();
 // Register services
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 
-// Register OCPP services
+// Register OCPP services (new layered architecture)
 builder.Services.AddSingleton<WebSocketMessageService>();
-builder.Services.AddSingleton<ChargerConnectionManager>();
 builder.Services.AddSingleton<ChargerStatusTracker>();
+
+// New architecture components
+builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Domain.ISessionManager, HASmartCharge.Backend.OCPP.Domain.SessionManager>();
+builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Application.IOcppMessageRouter, HASmartCharge.Backend.OCPP.Application.OcppMessageRouter>();
+builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConnectionOrchestrator>();
+
+// Command sender (uses new architecture)
+builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender, HASmartCharge.Backend.OCPP.Services.SessionCommandSender>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
+
+// Legacy services (kept for backward compatibility, to be removed after full migration)
+builder.Services.AddSingleton<ChargerConnectionManager>();
 builder.Services.AddSingleton<OcppServerService>();
 
 WebApplication app = builder.Build();

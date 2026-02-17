@@ -9,14 +9,14 @@ namespace HASmartCharge.Backend.OCPP.Services;
 public class ChargerConfigurationService
 {
     private readonly ILogger<ChargerConfigurationService> _logger;
-    private readonly ChargerConnectionManager _connectionManager;
+    private readonly ICommandSender _commandSender;
 
     public ChargerConfigurationService(
         ILogger<ChargerConfigurationService> logger,
-        ChargerConnectionManager connectionManager)
+        ICommandSender commandSender)
     {
         _logger = logger;
-        _connectionManager = connectionManager;
+        _commandSender = commandSender;
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ public class ChargerConfigurationService
 
             GetConfigurationRequest request = new GetConfigurationRequest { Key = keys };
             
-            bool success = await _connectionManager.SendCommandAsync(
+            bool success = await _commandSender.SendCommandAsync(
                 chargePointId, 
                 "GetConfiguration", 
                 request, 
@@ -107,7 +107,7 @@ public class ChargerConfigurationService
                 Value = value
             };
 
-            bool success = await _connectionManager.SendCommandAsync(
+            bool success = await _commandSender.SendCommandAsync(
                 chargePointId, 
                 "ChangeConfiguration", 
                 request, 
