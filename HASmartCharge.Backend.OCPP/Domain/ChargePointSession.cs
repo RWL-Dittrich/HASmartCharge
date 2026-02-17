@@ -50,23 +50,33 @@ public class ChargePointSession : IChargePointSession
         // Update status tracker
         _statusTracker.OnChargerConnected(ChargePointId);
         
-        // Trigger BootNotification after a short delay to ensure connection is stable
-        _ = Task.Run(async () =>
+        // Trigger BootNotification and configuration in background
+        // Note: Not awaited intentionally - initialization continues in parallel with message processing
+        // The session lifecycle is managed by the orchestrator, which keeps the session alive
+        _ = InitializeInBackgroundAsync(cancellationToken);
+    }
+
+    private async Task InitializeInBackgroundAsync(CancellationToken cancellationToken)
+    {
+        try
         {
-            try
-            {
-                await Task.Delay(2000, cancellationToken);
-                await TriggerBootNotificationAsync(cancellationToken);
-                
-                // Configure charger after boot notification
-                await Task.Delay(2000, cancellationToken);
-                await _configurationService.ConfigureChargerAsync(ChargePointId, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[{ChargePointId}] Error in initialization sequence", ChargePointId);
-            }
-        }, cancellationToken);
+            // Small delay to ensure connection is stable
+            await Task.Delay(2000, cancellationToken);
+            
+            await TriggerBootNotificationAsync(cancellationToken);
+            
+            // Configure charger after boot notification
+            await Task.Delay(2000, cancellationToken);
+            await _configurationService.ConfigureChargerAsync(ChargePointId, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("[{ChargePointId}] Background initialization cancelled", ChargePointId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{ChargePointId}] Error in background initialization", ChargePointId);
+        }
     }
 
     public async Task<object> HandleCallAsync(
@@ -100,7 +110,9 @@ public class ChargePointSession : IChargePointSession
         _logger.LogDebug("[{ChargePointId}] Received CallResult for message {MessageId}",
             ChargePointId, messageId);
         
-        // TODO: Implement correlation tracking for request/response matching if needed
+        // Correlation tracking for request/response matching is not implemented
+        // in this version. This would be a future enhancement if needed for
+        // tracking responses to outbound commands (GetConfiguration, ChangeConfiguration, etc.)
         return Task.CompletedTask;
     }
 
@@ -113,7 +125,9 @@ public class ChargePointSession : IChargePointSession
         _logger.LogWarning("[{ChargePointId}] Received CallError for message {MessageId}: {ErrorCode}",
             ChargePointId, messageId, errorCode);
         
-        // TODO: Implement correlation tracking for request/response matching if needed
+        // Correlation tracking for request/response matching is not implemented
+        // in this version. This would be a future enhancement if needed for
+        // tracking errors from outbound commands.
         return Task.CompletedTask;
     }
 
