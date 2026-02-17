@@ -5,7 +5,6 @@ namespace HASmartCharge.Backend.OCPP.Services;
 
 /// <summary>
 /// Interface for sending commands to charge points
-/// Abstracts the underlying implementation (old or new architecture)
 /// </summary>
 public interface ICommandSender
 {
@@ -13,29 +12,7 @@ public interface ICommandSender
 }
 
 /// <summary>
-/// Legacy implementation using ChargerConnectionManager
-/// </summary>
-public class LegacyCommandSender : ICommandSender
-{
-    private readonly ChargerConnectionManager _connectionManager;
-
-    public LegacyCommandSender(ChargerConnectionManager connectionManager)
-    {
-        _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
-    }
-
-    public async Task<bool> SendCommandAsync<TRequest>(
-        string chargePointId,
-        string action,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        return await _connectionManager.SendCommandAsync(chargePointId, action, request, cancellationToken);
-    }
-}
-
-/// <summary>
-/// New implementation using SessionManager
+/// Implementation using SessionManager (new architecture)
 /// </summary>
 public class SessionCommandSender : ICommandSender
 {

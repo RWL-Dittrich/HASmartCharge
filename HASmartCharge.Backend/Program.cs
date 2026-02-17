@@ -52,10 +52,6 @@ builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConn
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender, HASmartCharge.Backend.OCPP.Services.SessionCommandSender>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
 
-// Legacy services (kept for backward compatibility, to be removed after full migration)
-builder.Services.AddSingleton<ChargerConnectionManager>();
-builder.Services.AddSingleton<OcppServerService>();
-
 WebApplication app = builder.Build();
 
 // Configure the HTTP request pipeline.

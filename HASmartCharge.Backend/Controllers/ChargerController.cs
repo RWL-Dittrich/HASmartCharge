@@ -1,5 +1,5 @@
 ﻿using HASmartCharge.Backend.Models.Charger;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.OCPP.Domain;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;
@@ -12,12 +12,12 @@ namespace HASmartCharge.Backend.Controllers;
 public class ChargerController : ControllerBase
 {
     private readonly ILogger<ChargerController> _logger;
-    private readonly ChargerConnectionManager _connectionManager;
+    private readonly ISessionManager _sessionManager;
 
-    public ChargerController(ILogger<ChargerController> logger, ChargerConnectionManager connectionManager)
+    public ChargerController(ILogger<ChargerController> logger, ISessionManager sessionManager)
     {
         _logger = logger;
-        _connectionManager = connectionManager;
+        _sessionManager = sessionManager;
     }
 
     /// <summary>
@@ -26,7 +26,7 @@ public class ChargerController : ControllerBase
     [HttpGet("connected")]
     public IActionResult GetConnectedChargers()
     {
-        List<string> connectedChargers = _connectionManager.GetConnectedChargers().ToList();
+        List<string> connectedChargers = _sessionManager.GetConnectedChargePointIds().ToList();
         return Ok(new { chargers = connectedChargers, count = connectedChargers.Count });
     }
 
@@ -36,7 +36,7 @@ public class ChargerController : ControllerBase
     [HttpGet("{chargerId}/status")]
     public IActionResult GetChargerStatus([FromRoute] string chargerId)
     {
-        bool isConnected = _connectionManager.IsConnected(chargerId);
+        bool isConnected = _sessionManager.IsConnected(chargerId);
         return Ok(new { chargerId, isConnected });
     }
 
@@ -50,7 +50,9 @@ public class ChargerController : ControllerBase
         [FromRoute] string chargerId, 
         [FromBody] SetAvailabilityRequest request)
     {
-        if (!_connectionManager.IsConnected(chargerId))
+        IChargePointSession? session = _sessionManager.GetByChargePointId(chargerId);
+        
+        if (session == null)
         {
             _logger.LogWarning("Attempted to set availability for disconnected charger: {ChargerId}", chargerId);
             return NotFound(new { error = "Charger not connected", chargerId });
@@ -66,10 +68,8 @@ public class ChargerController : ControllerBase
             "Setting availability for charger {ChargerId}, connector {ConnectorId} to {Type}", 
             chargerId, request.ConnectorId, request.Type);
 
-        bool success = await _connectionManager.ChangeAvailabilityAsync(
-            chargerId, 
-            request.ConnectorId, 
-            request.Type);
+        bool available = request.Type == "Operative";
+        bool success = await session.SetAvailabilityAsync(request.ConnectorId, available);
 
         if (success)
         {
