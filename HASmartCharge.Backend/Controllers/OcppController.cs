@@ -1,5 +1,5 @@
 using System.Net.WebSockets;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.OCPP.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;
@@ -13,11 +13,11 @@ namespace HASmartCharge.Backend.Controllers;
 public class OcppController : ControllerBase
 {
     private readonly ILogger<OcppController> _logger;
-    private readonly OcppServerService _ocppServer;
+    private readonly OcppConnectionOrchestrator _orchestrator;
 
-    public OcppController(OcppServerService ocppServer, ILogger<OcppController> logger)
+    public OcppController(OcppConnectionOrchestrator orchestrator, ILogger<OcppController> logger)
     {
-        _ocppServer = ocppServer;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
@@ -35,7 +35,9 @@ public class OcppController : ControllerBase
 
             using WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
             
-            await _ocppServer.HandleConnection(webSocket, chargePointId);
+            string remoteEndPoint = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            
+            await _orchestrator.HandleConnectionAsync(webSocket, chargePointId, remoteEndPoint);
         }
         else
         {

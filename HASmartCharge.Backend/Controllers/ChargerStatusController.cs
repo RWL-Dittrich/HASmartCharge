@@ -9,12 +9,10 @@ namespace HASmartCharge.Backend.Controllers;
 public class ChargerStatusController : ControllerBase
 {
     private readonly ChargerStatusTracker _statusTracker;
-    private readonly ChargerConnectionManager _connectionManager;
 
-    public ChargerStatusController(ChargerStatusTracker statusTracker, ChargerConnectionManager connectionManager)
+    public ChargerStatusController(ChargerStatusTracker statusTracker)
     {
         _statusTracker = statusTracker;
-        _connectionManager = connectionManager;
     }
 
     /// <summary>

@@ -149,66 +149,221 @@ You can also use dedicated OCPP testing tools like:
 
 ### Architecture
 
+The OCPP implementation follows a clean layered architecture with clear separation of concerns:
+
+#### Layer Overview
+
 ```
-OcppController (WebSocket endpoint)
-    ↓
-OcppServerService (manages connections and message handling)
-    ↓
-OcppMessageHandler (routes messages to handlers)
-    ├── BootNotification handler
-    ├── Authorize handler
-    ├── StartTransaction handler
-    ├── StopTransaction handler
-    ├── Heartbeat handler
-    ├── MeterValues handler
-    ├── StatusNotification handler
-    ├── DataTransfer handler
-    ├── DiagnosticsStatusNotification handler
-    └── FirmwareStatusNotification handler
+┌─────────────────────────────────────────────────────────┐
+│                     OcppController                      │
+│              (ASP.NET WebSocket Endpoint)               │
+└─────────────────────┬───────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────┐
+│             OcppConnectionOrchestrator                  │
+│              (Infrastructure Layer)                      │
+│   • Creates sessions and connections                    │
+│   • Manages connection lifecycle                        │
+│   • Delegates to Router and SessionManager              │
+└─────────────────────┬───────────────────────────────────┘
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+        ▼             ▼             ▼
+┌──────────────┐ ┌────────────┐ ┌─────────────────┐
+│  Transport   │ │ Application│ │     Domain      │
+│    Layer     │ │   Layer    │ │     Layer       │
+└──────────────┘ └────────────┘ └─────────────────┘
 ```
+
+#### 1. Transport Layer
+**Responsibility**: Manage physical connection, no business logic
+
+**Key Components:**
+- `IConnection` - Abstraction for any transport (WebSocket, TCP, etc.)
+- `WebSocketConnection` - WebSocket implementation of IConnection
+- Handles send/receive at the byte level
+- Completely isolated from OCPP protocol details
+
+**Files:**
+- `Transport/IConnection.cs`
+- `Transport/WebSocketConnection.cs`
+- `Services/WebSocketMessageService.cs` (low-level WebSocket buffering)
+
+#### 2. Application Layer
+**Responsibility**: Route messages, decode/encode OCPP protocol
+
+**Key Components:**
+- `IOcppMessageRouter` / `OcppMessageRouter` - Routes OCPP messages to sessions
+- Parses OCPP message types (CALL, CALLRESULT, CALLERROR)
+- Handles message correlation and response generation
+- No domain state or business logic
+
+**Message Flow:**
+1. Receive raw JSON string from transport
+2. Parse into `OcppMessage` (MessageType, MessageId, Action, Payload)
+3. Route to appropriate `ChargePointSession` based on connection
+4. Handle response/error formatting
+
+**Files:**
+- `Application/IOcppMessageRouter.cs`
+- `Application/OcppMessageRouter.cs`
+- `Models/OcppMessage.cs` (message parsing/serialization)
+
+#### 3. Domain Layer
+**Responsibility**: Charge point business logic and state
+
+**Key Components:**
+- `IChargePointSession` / `ChargePointSession` - Represents a connected charge point
+  - Owns per-charge-point state (transactions, status, configuration)
+  - Handles all inbound OCPP actions (BootNotification, Heartbeat, StartTransaction, etc.)
+  - Provides outbound command methods (SetAvailability, RemoteStart/Stop, ChangeConfiguration)
+  - No WebSocket dependencies - uses IConnection abstraction
+
+- `ISessionManager` / `SessionManager` - Tracks all active sessions
+  - Maps charge point IDs to sessions
+  - Maps connection IDs to sessions
+  - Provides session lookup and lifecycle management
+
+**State Management:**
+- Session state lives in `ChargePointSession`
+- Aggregated state tracking via `ChargerStatusTracker` (shared service)
+- Configuration application via `ChargerConfigurationService`
+
+**Files:**
+- `Domain/IChargePointSession.cs`
+- `Domain/ChargePointSession.cs`
+- `Domain/ISessionManager.cs`
+- `Domain/SessionManager.cs`
+- `Services/ChargerStatusTracker.cs`
+- `Services/ChargerConfigurationService.cs`
+
+#### 4. Infrastructure Layer
+**Responsibility**: Orchestration and cross-cutting concerns
+
+**Key Components:**
+- `OcppConnectionOrchestrator` - Coordinates connection handling
+  - Creates WebSocketConnection from raw WebSocket
+  - Creates ChargePointSession with proper dependencies
+  - Registers session with SessionManager
+  - Manages message processing loop
+  - Handles cleanup on disconnect
+
+**Files:**
+- `Infrastructure/OcppConnectionOrchestrator.cs`
+
+### Message Flow (Detailed)
+
+**Inbound Message (CP → CS):**
+```
+1. WebSocket.ReceiveAsync (raw bytes)
+   ↓
+2. WebSocketMessageService.ReceiveMessageAsync (string)
+   ↓
+3. OcppConnectionOrchestrator.ProcessMessagesAsync
+   ↓
+4. OcppMessageRouter.RouteAsync
+   ↓ (parse OcppMessage)
+5. SessionManager.GetByConnectionId
+   ↓
+6. ChargePointSession.HandleCallAsync
+   ↓ (switch on action)
+7. ChargePointSession.HandleBootNotificationAsync (or other handler)
+   ↓
+8. ChargerStatusTracker.OnBootNotification (update state)
+   ↓
+9. Return response object
+   ↓
+10. OcppMessageRouter wraps in CALLRESULT
+    ↓
+11. WebSocketConnection.SendAsync
+    ↓
+12. WebSocketMessageService.SendMessageAsync
+```
+
+**Outbound Command (CS → CP):**
+```
+1. External caller → SessionManager.GetByChargePointId
+   ↓
+2. ChargePointSession.ChangeConfigurationAsync (or other command)
+   ↓
+3. ChargePointSession.SendCommandAsync<T>
+   ↓ (create CALL message)
+4. IConnection.SendAsync
+   ↓
+5. WebSocketMessageService.SendMessageAsync
+   ↓
+6. WebSocket.SendAsync (raw bytes)
+```
+
+### Dependency Rules
+
+These are **hard constraints** enforced by the architecture:
+
+1. **Domain must NOT depend on Transport**
+   - ChargePointSession uses `IConnection`, never `WebSocket`
+   - No ASP.NET types in domain code
+
+2. **Transport must NOT contain OCPP logic**
+   - WebSocketConnection only knows about sending/receiving strings
+   - No knowledge of CALL/CALLRESULT/actions
+
+3. **Application routes, does NOT own state**
+   - Router delegates to sessions for all business logic
+   - No transaction counters or status tracking in router
+
+4. **No circular dependencies**
+   - Clean one-way dependency graph:
+     `Infrastructure → Application → Domain → Transport (abstraction only)`
+
+### Configuration Application Flow
+
+Configuration is applied **after BootNotification** is received:
+
+1. Connection established
+2. Session created and registered
+3. `Session.InitializeAsync()` called
+4. After 2s delay → TriggerMessage(BootNotification) sent to CP
+5. CP responds with BootNotification → session handles it
+6. After additional 2s delay → `ChargerConfigurationService.ConfigureChargerAsync()` called
+7. Configuration commands (ChangeConfiguration) sent to CP
+
+This ensures the charge point is fully initialized before we attempt configuration.
 
 ### Implementation Components
 
 **Project Structure:**
 - **HASmartCharge.Backend.OCPP** - Separate class library project containing all OCPP logic
-  - Models: Individual files for each OCPP message type
-  - Handlers: Message routing and processing
-  - Services: WebSocket connection management
+  - **Transport/**: Connection abstractions (IConnection, WebSocketConnection)
+  - **Application/**: Message routing and protocol handling (OcppMessageRouter)
+  - **Domain/**: Charge point sessions and business logic (ChargePointSession, SessionManager)
+  - **Infrastructure/**: Orchestration and cross-cutting concerns (OcppConnectionOrchestrator)
+  - **Models/**: Individual files for each OCPP message type
+  - **Services/**: Shared services (ChargerStatusTracker, ChargerConfigurationService, WebSocketMessageService)
 
 **Key Files:**
 
-1. **OcppMessage.cs** - Core OCPP message parsing and serialization
-   - Handles CALL (2), CALLRESULT (3), and CALLERROR (4) message types
-   - JSON array format: `[MessageType, MessageId, Action, Payload]`
+1. **Transport Layer:**
+   - `Transport/IConnection.cs` - Connection abstraction
+   - `Transport/WebSocketConnection.cs` - WebSocket implementation
+   - `Services/WebSocketMessageService.cs` - Low-level WebSocket buffering
 
-2. **Individual Message Models** - Each OCPP message in its own file
-   - BootNotification.cs
-   - Authorize.cs
-   - StartTransaction.cs
-   - StopTransaction.cs
-   - MeterValues.cs
-   - StatusNotification.cs
-   - DataTransfer.cs
-   - DiagnosticsStatusNotification.cs
-   - FirmwareStatusNotification.cs
-   - Heartbeat.cs
-   - CommonTypes.cs (shared types like IdTagInfo, MeterValue, SampledValue)
+2. **Application Layer:**
+   - `Application/OcppMessageRouter.cs` - Routes OCPP messages to sessions
+   - `Models/OcppMessage.cs` - Core OCPP message parsing and serialization
 
-3. **OcppMessageHandler.cs** - Message routing and handler registration
-   - Routes incoming messages to appropriate handlers
-   - Generates properly formatted responses
-   - Error handling with OCPP error codes
+3. **Domain Layer:**
+   - `Domain/ChargePointSession.cs` - Charge point session with all OCPP handlers
+   - `Domain/SessionManager.cs` - Tracks and manages all active sessions
 
-4. **OcppServerService.cs** - WebSocket connection management
-   - Manages WebSocket lifecycle
-   - Processes incoming/outgoing messages
-   - Implements all OCPP 1.6J message handlers
+4. **Infrastructure Layer:**
+   - `Infrastructure/OcppConnectionOrchestrator.cs` - Connection lifecycle orchestration
+   - `Services/ChargerStatusTracker.cs` - Aggregated state tracking
+   - `Services/ChargerConfigurationService.cs` - Automatic charger configuration
 
-5. **OcppController.cs** - ASP.NET Core WebSocket endpoint (in Backend project)
-   - Base route: `/ocpp`
-   - Accepts WebSocket connections at `/ocpp/1.6/{chargePointId}`
-   - Validates sub-protocol
-   - Delegates to OcppServerService
+5. **Controller (Entry Point):**
+   - `HASmartCharge.Backend/Controllers/OcppController.cs` - ASP.NET Core WebSocket endpoint
 
 ### Dependencies
 
