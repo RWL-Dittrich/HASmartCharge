@@ -8,6 +8,7 @@ using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
 using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -58,6 +59,7 @@ WebApplication app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 // Enable WebSockets middleware
