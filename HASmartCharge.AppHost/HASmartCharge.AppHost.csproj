@@ -12,4 +12,8 @@
       <ProjectReference Include="..\HASmartCharge.Backend\HASmartCharge.Backend.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.1.1" />
+    </ItemGroup>
+
 </Project>

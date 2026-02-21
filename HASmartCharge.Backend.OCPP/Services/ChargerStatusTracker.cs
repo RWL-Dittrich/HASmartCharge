@@ -305,7 +305,7 @@ public class ChargerStatusTracker
                 measurands.Frequency = value;
                 break;
             case "RPM":
-                measurands.RPM = value;
+                measurands.Rpm = value;
                 break;
         }
     }

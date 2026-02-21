@@ -264,9 +264,9 @@ public class ChargePointSession : IChargePointSession
 
             if (request.MeterValue != null)
             {
-                foreach (var meterValue in request.MeterValue)
+                foreach (MeterValue meterValue in request.MeterValue)
                 {
-                    foreach (var sampledValue in meterValue.SampledValue)
+                    foreach (SampledValue sampledValue in meterValue.SampledValue)
                     {
                         string measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
                         string phase = sampledValue.Phase != null ? $" (Phase: {sampledValue.Phase})" : "";

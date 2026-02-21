@@ -38,7 +38,7 @@ public class WebSocketConnection : IConnection
             throw new InvalidOperationException("Connection is not open");
         }
 
-        await _messageService.SendMessageAsync(_webSocket, message, cancellationToken);
+        await WebSocketMessageService.SendMessageAsync(_webSocket, message, cancellationToken);
     }
 
     public async Task CloseAsync(CancellationToken cancellationToken = default)
@@ -58,6 +58,6 @@ public class WebSocketConnection : IConnection
     /// </summary>
     public async Task<string?> ReceiveAsync(CancellationToken cancellationToken = default)
     {
-        return await _messageService.ReceiveMessageAsync(_webSocket, cancellationToken);
+        return await WebSocketMessageService.ReceiveMessageAsync(_webSocket, cancellationToken);
     }
 }

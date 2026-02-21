@@ -1,5 +1,4 @@
-using HASmartCharge.Backend.OCPP.Models;
-using Microsoft.Extensions.Logging;
+using HASmartCharge.Backend.OCPP.Domain;
 
 namespace HASmartCharge.Backend.OCPP.Services;
 
@@ -29,7 +28,7 @@ public class SessionCommandSender : ICommandSender
         TRequest request,
         CancellationToken cancellationToken = default)
     {
-        var session = _sessionManager.GetByChargePointId(chargePointId);
+        IChargePointSession? session = _sessionManager.GetByChargePointId(chargePointId);
         if (session == null)
         {
             return false;

@@ -115,7 +115,7 @@ public class ConnectorMeasurands
     public MeasurandValue? Temperature { get; set; }
     public MeasurandValue? SoC { get; set; } // State of Charge
     public MeasurandValue? Frequency { get; set; }
-    public MeasurandValue? RPM { get; set; }
+    public MeasurandValue? Rpm { get; set; }
 }
 
 /// <summary>

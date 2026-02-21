@@ -215,9 +215,9 @@ public class ChargerStatusController : ControllerBase
         }
 
         decimal totalPower = 0;
-        var connectorPowers = new List<object>();
+        List<object> connectorPowers = new List<object>();
 
-        foreach (var kvp in status.Measurands)
+        foreach (KeyValuePair<int, ConnectorMeasurands> kvp in status.Measurands)
         {
             decimal? power = kvp.Value.PowerActiveImport?.AsDecimal();
             if (power.HasValue)

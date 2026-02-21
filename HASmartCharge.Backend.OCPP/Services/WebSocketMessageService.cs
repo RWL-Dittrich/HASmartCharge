@@ -1,5 +1,4 @@
 using System.Net.WebSockets;
-using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
@@ -20,7 +19,7 @@ public class WebSocketMessageService
     /// <summary>
     /// Receives a complete message from the WebSocket
     /// </summary>
-    public async Task<string?> ReceiveMessageAsync(WebSocket webSocket, CancellationToken cancellationToken = default)
+    public static async Task<string?> ReceiveMessageAsync(WebSocket webSocket, CancellationToken cancellationToken = default)
     {
         byte[] buffer = new byte[4096];
         List<byte> messageBuffer = new List<byte>();
@@ -55,7 +54,7 @@ public class WebSocketMessageService
     /// <summary>
     /// Sends a message to the WebSocket
     /// </summary>
-    public async Task SendMessageAsync(WebSocket webSocket, string message, CancellationToken cancellationToken = default)
+    public static async Task SendMessageAsync(WebSocket webSocket, string message, CancellationToken cancellationToken = default)
     {
         if (webSocket.State != WebSocketState.Open)
         {
