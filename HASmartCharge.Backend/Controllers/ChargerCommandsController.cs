@@ -11,9 +11,9 @@ namespace HASmartCharge.Backend.Controllers;
 ///
 /// All command endpoints return 404 if the charger has never been seen,
 /// or 503 if it is known but not currently connected.
-/// A 200 response means the command was successfully dispatched to the charger;
-/// it does not guarantee the charger accepted it (response correlation is not
-/// yet implemented).
+/// A 200 response means the command was successfully dispatched to the charger
+/// and the charger responded with a CALLRESULT.
+/// A 502 response means the charger responded with a CALLERROR or timed out.
 /// </summary>
 [ApiController]
 [Route("api/chargers/{chargerId}")]
@@ -42,7 +42,9 @@ public class ChargerCommandsController : ControllerBase
     /// <param name="request">Reset type — <c>Hard</c> or <c>Soft</c> (default: Soft)</param>
     [HttpPost("reset")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Reset(
         [FromRoute] string chargerId,
@@ -56,10 +58,8 @@ public class ChargerCommandsController : ControllerBase
 
         _logger.LogInformation("Sending Reset ({Type}) to {ChargerId}", request.Type, chargerId);
 
-        bool sent = await session.SendCommandAsync("Reset", new ResetRequest { Type = request.Type });
-        return sent
-            ? Ok(new { dispatched = true, chargerId, type = request.Type })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        OcppCommandResult result = await session.SendCommandAsync("Reset", new ResetRequest { Type = request.Type });
+        return OcppResultToActionResult(result, new { chargerId, type = request.Type });
     }
 
     /// <summary>
@@ -68,6 +68,7 @@ public class ChargerCommandsController : ControllerBase
     [HttpPost("clear-cache")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> ClearCache([FromRoute] string chargerId)
     {
@@ -76,10 +77,8 @@ public class ChargerCommandsController : ControllerBase
 
         _logger.LogInformation("Sending ClearCache to {ChargerId}", chargerId);
 
-        bool sent = await session.SendCommandAsync("ClearCache", new { });
-        return sent
-            ? Ok(new { dispatched = true, chargerId })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        OcppCommandResult result = await session.SendCommandAsync("ClearCache", new { });
+        return OcppResultToActionResult(result, new { chargerId });
     }
 
     /// <summary>
@@ -92,6 +91,7 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> TriggerMessage(
         [FromRoute] string chargerId,
@@ -107,15 +107,13 @@ public class ChargerCommandsController : ControllerBase
             "Sending TriggerMessage ({RequestedMessage}, connector {ConnectorId}) to {ChargerId}",
             request.RequestedMessage, request.ConnectorId, chargerId);
 
-        bool sent = await session.SendCommandAsync("TriggerMessage", new TriggerMessageRequest
+        OcppCommandResult result = await session.SendCommandAsync("TriggerMessage", new TriggerMessageRequest
         {
             RequestedMessage = request.RequestedMessage,
             ConnectorId      = request.ConnectorId
         });
 
-        return sent
-            ? Ok(new { dispatched = true, chargerId, requestedMessage = request.RequestedMessage, connectorId = request.ConnectorId })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        return OcppResultToActionResult(result, new { chargerId, requestedMessage = request.RequestedMessage, connectorId = request.ConnectorId });
     }
 
     /// <summary>
@@ -125,6 +123,7 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetDiagnostics(
         [FromRoute] string chargerId,
@@ -138,7 +137,7 @@ public class ChargerCommandsController : ControllerBase
 
         _logger.LogInformation("Sending GetDiagnostics to {ChargerId}, location={Location}", chargerId, request.Location);
 
-        bool sent = await session.SendCommandAsync("GetDiagnostics", new GetDiagnosticsRequest
+        OcppCommandResult result = await session.SendCommandAsync("GetDiagnostics", new GetDiagnosticsRequest
         {
             Location      = request.Location,
             Retries       = request.Retries,
@@ -147,9 +146,7 @@ public class ChargerCommandsController : ControllerBase
             StopTime      = request.StopTime
         });
 
-        return sent
-            ? Ok(new { dispatched = true, chargerId, location = request.Location })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        return OcppResultToActionResult(result, new { chargerId, location = request.Location });
     }
 
     // -------------------------------------------------------------------------
@@ -163,6 +160,7 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SetAvailability(
         [FromRoute] string chargerId,
@@ -180,11 +178,9 @@ public class ChargerCommandsController : ControllerBase
             chargerId, connectorId, request.Type);
 
         bool available = request.Type == "Operative";
-        bool sent = await session.SetAvailabilityAsync(connectorId, available);
+        OcppCommandResult result = await session.SetAvailabilityAsync(connectorId, available);
 
-        return sent
-            ? Ok(new { dispatched = true, chargerId, connectorId, type = request.Type })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        return OcppResultToActionResult(result, new { chargerId, connectorId, type = request.Type });
     }
 
     /// <summary>
@@ -193,6 +189,7 @@ public class ChargerCommandsController : ControllerBase
     [HttpPost("connectors/{connectorId:int}/unlock")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> UnlockConnector(
         [FromRoute] string chargerId,
@@ -203,14 +200,12 @@ public class ChargerCommandsController : ControllerBase
 
         _logger.LogInformation("Sending UnlockConnector to {ChargerId} connector {ConnectorId}", chargerId, connectorId);
 
-        bool sent = await session.SendCommandAsync("UnlockConnector", new UnlockConnectorRequest
+        OcppCommandResult result = await session.SendCommandAsync("UnlockConnector", new UnlockConnectorRequest
         {
             ConnectorId = connectorId
         });
 
-        return sent
-            ? Ok(new { dispatched = true, chargerId, connectorId })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        return OcppResultToActionResult(result, new { chargerId, connectorId });
     }
 
     /// <summary>
@@ -220,6 +215,7 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> StartTransaction(
         [FromRoute] string chargerId,
@@ -236,11 +232,9 @@ public class ChargerCommandsController : ControllerBase
             "Sending RemoteStartTransaction to {ChargerId} connector {ConnectorId}, idTag={IdTag}",
             chargerId, connectorId, request.IdTag);
 
-        bool sent = await session.RemoteStartTransactionAsync(connectorId, request.IdTag);
+        OcppCommandResult result = await session.RemoteStartTransactionAsync(connectorId, request.IdTag);
 
-        return sent
-            ? Ok(new { dispatched = true, chargerId, connectorId, idTag = request.IdTag })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        return OcppResultToActionResult(result, new { chargerId, connectorId, idTag = request.IdTag });
     }
 
     /// <summary>
@@ -249,6 +243,7 @@ public class ChargerCommandsController : ControllerBase
     [HttpDelete("connectors/{connectorId:int}/transactions/{transactionId:int}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> StopTransaction(
         [FromRoute] string chargerId,
@@ -262,11 +257,9 @@ public class ChargerCommandsController : ControllerBase
             "Sending RemoteStopTransaction to {ChargerId} connector {ConnectorId}, transactionId={TransactionId}",
             chargerId, connectorId, transactionId);
 
-        bool sent = await session.RemoteStopTransactionAsync(transactionId);
+        OcppCommandResult result = await session.RemoteStopTransactionAsync(transactionId);
 
-        return sent
-            ? Ok(new { dispatched = true, chargerId, connectorId, transactionId })
-            : StatusCode(StatusCodes.Status500InternalServerError, new { error = "Failed to dispatch command" });
+        return OcppResultToActionResult(result, new { chargerId, connectorId, transactionId });
     }
 
     // -------------------------------------------------------------------------
@@ -295,12 +288,27 @@ public class ChargerCommandsController : ControllerBase
         error = null;
         return session;
     }
+
+    /// <summary>
+    /// Maps an <see cref="OcppCommandResult"/> to an <see cref="IActionResult"/>.
+    /// 200 OK on success, 502 Bad Gateway on charger error or timeout.
+    /// </summary>
+    private IActionResult OcppResultToActionResult(OcppCommandResult result, object context)
+    {
+        if (result.Success)
+        {
+            return Ok(new { success = true, response = result.RawPayload, context });
+        }
+
+        return StatusCode(StatusCodes.Status502BadGateway, new
+        {
+            success = false,
+            errorCode = result.ErrorCode,
+            errorDescription = result.ErrorDescription,
+            context
+        });
+    }
 }
-
-
-
-
-
 
 
 

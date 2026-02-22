@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Transport;
 
 namespace HASmartCharge.Backend.OCPP.Domain;
@@ -45,29 +46,29 @@ public interface IChargePointSession
     Task HandleCallErrorAsync(string messageId, string errorCode, JsonElement payload, CancellationToken cancellationToken = default);
     
     /// <summary>
-    /// Send a command to the charge point (CSMS-initiated)
+    /// Send a command to the charge point (CSMS-initiated) and await the charger's response.
     /// </summary>
-    Task<bool> SendCommandAsync<TRequest>(string action, TRequest request, CancellationToken cancellationToken = default);
+    Task<OcppCommandResult> SendCommandAsync<TRequest>(string action, TRequest request, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Set availability of a connector
     /// </summary>
-    Task<bool> SetAvailabilityAsync(int connectorId, bool available, CancellationToken cancellationToken = default);
+    Task<OcppCommandResult> SetAvailabilityAsync(int connectorId, bool available, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Start a remote transaction
     /// </summary>
-    Task<bool> RemoteStartTransactionAsync(int connectorId, string idTag, CancellationToken cancellationToken = default);
+    Task<OcppCommandResult> RemoteStartTransactionAsync(int connectorId, string idTag, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Stop a remote transaction
     /// </summary>
-    Task<bool> RemoteStopTransactionAsync(int transactionId, CancellationToken cancellationToken = default);
+    Task<OcppCommandResult> RemoteStopTransactionAsync(int transactionId, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Change configuration on the charge point
     /// </summary>
-    Task<bool> ChangeConfigurationAsync(string key, string value, CancellationToken cancellationToken = default);
+    Task<OcppCommandResult> ChangeConfigurationAsync(string key, string value, CancellationToken cancellationToken = default);
     
     /// <summary>
     /// Initialize the session (apply initial configuration, etc.)
