@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Services;
@@ -18,6 +19,7 @@ public class ChargePointSession : IChargePointSession
     private int _transactionCounter;
     private int _messageIdCounter;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<OcppCommandResult>> _pendingCommands = new();
 
     public ChargePointSession(
         string chargePointId,
@@ -109,10 +111,12 @@ public class ChargePointSession : IChargePointSession
     {
         _logger.LogDebug("[{ChargePointId}] Received CallResult for message {MessageId}",
             ChargePointId, messageId);
-        
-        // Correlation tracking for request/response matching is not implemented
-        // in this version. This would be a future enhancement if needed for
-        // tracking responses to outbound commands (GetConfiguration, ChangeConfiguration, etc.)
+
+        if (_pendingCommands.TryRemove(messageId, out TaskCompletionSource<OcppCommandResult>? tcs))
+        {
+            tcs.TrySetResult(OcppCommandResult.FromCallResult(payload));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -122,12 +126,18 @@ public class ChargePointSession : IChargePointSession
         JsonElement payload,
         CancellationToken cancellationToken = default)
     {
+        string? errorDescription = payload.ValueKind == JsonValueKind.String
+            ? payload.GetString()
+            : null;
+
         _logger.LogWarning("[{ChargePointId}] Received CallError for message {MessageId}: {ErrorCode}",
             ChargePointId, messageId, errorCode);
-        
-        // Correlation tracking for request/response matching is not implemented
-        // in this version. This would be a future enhancement if needed for
-        // tracking errors from outbound commands.
+
+        if (_pendingCommands.TryRemove(messageId, out TaskCompletionSource<OcppCommandResult>? tcs))
+        {
+            tcs.TrySetResult(OcppCommandResult.FromCallError(errorCode, errorDescription));
+        }
+
         return Task.CompletedTask;
     }
 
@@ -348,7 +358,7 @@ public class ChargePointSession : IChargePointSession
 
     #region Outbound Commands (CS -> CP)
 
-    public async Task<bool> SendCommandAsync<TRequest>(
+    public async Task<OcppCommandResult> SendCommandAsync<TRequest>(
         string action,
         TRequest request,
         CancellationToken cancellationToken = default)
@@ -356,13 +366,16 @@ public class ChargePointSession : IChargePointSession
         if (!IsActive || !Connection.IsOpen)
         {
             _logger.LogWarning("[{ChargePointId}] Cannot send command, connection not active", ChargePointId);
-            return false;
+            return OcppCommandResult.FromCallError("ConnectionError", "Connection is not active");
         }
+
+        string messageId = string.Empty;
+        TaskCompletionSource<OcppCommandResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await _sendLock.WaitAsync(cancellationToken);
         try
         {
-            string messageId = Interlocked.Increment(ref _messageIdCounter).ToString();
+            messageId = Interlocked.Increment(ref _messageIdCounter).ToString();
 
             OcppMessage message = new OcppMessage
             {
@@ -377,22 +390,40 @@ public class ChargePointSession : IChargePointSession
             _logger.LogInformation("[{ChargePointId}] Sending {Action} command: {Message}",
                 ChargePointId, action, messageJson);
 
-            await Connection.SendAsync(messageJson, cancellationToken);
+            _pendingCommands[messageId] = tcs;
 
-            return true;
+            await Connection.SendAsync(messageJson, cancellationToken);
         }
         catch (Exception ex)
         {
+            _pendingCommands.TryRemove(messageId, out _);
             _logger.LogError(ex, "[{ChargePointId}] Error sending command", ChargePointId);
-            return false;
+            return OcppCommandResult.FromCallError("SendError", ex.Message);
         }
         finally
         {
             _sendLock.Release();
         }
+
+        // Await the charger's response with a timeout
+        using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(30));
+        using CancellationTokenSource linkedCts =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        try
+        {
+            return await tcs.Task.WaitAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            _pendingCommands.TryRemove(messageId, out _);
+            _logger.LogWarning("[{ChargePointId}] Command {Action} timed out (message {MessageId})",
+                ChargePointId, action, messageId);
+            return OcppCommandResult.TimedOut();
+        }
     }
 
-    public async Task<bool> SetAvailabilityAsync(
+    public async Task<OcppCommandResult> SetAvailabilityAsync(
         int connectorId,
         bool available,
         CancellationToken cancellationToken = default)
@@ -406,7 +437,7 @@ public class ChargePointSession : IChargePointSession
         return await SendCommandAsync("ChangeAvailability", request, cancellationToken);
     }
 
-    public async Task<bool> RemoteStartTransactionAsync(
+    public async Task<OcppCommandResult> RemoteStartTransactionAsync(
         int connectorId,
         string idTag,
         CancellationToken cancellationToken = default)
@@ -420,7 +451,7 @@ public class ChargePointSession : IChargePointSession
         return await SendCommandAsync("RemoteStartTransaction", request, cancellationToken);
     }
 
-    public async Task<bool> RemoteStopTransactionAsync(
+    public async Task<OcppCommandResult> RemoteStopTransactionAsync(
         int transactionId,
         CancellationToken cancellationToken = default)
     {
@@ -432,7 +463,7 @@ public class ChargePointSession : IChargePointSession
         return await SendCommandAsync("RemoteStopTransaction", request, cancellationToken);
     }
 
-    public async Task<bool> ChangeConfigurationAsync(
+    public async Task<OcppCommandResult> ChangeConfigurationAsync(
         string key,
         string value,
         CancellationToken cancellationToken = default)
@@ -453,7 +484,8 @@ public class ChargePointSession : IChargePointSession
             RequestedMessage = "BootNotification"
         };
 
-        return await SendCommandAsync("TriggerMessage", request, cancellationToken);
+        OcppCommandResult result = await SendCommandAsync("TriggerMessage", request, cancellationToken);
+        return result.Success;
     }
 
     #endregion

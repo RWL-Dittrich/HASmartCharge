@@ -69,11 +69,11 @@ public class ChargerConfigurationService
 
             GetConfigurationRequest request = new GetConfigurationRequest { Key = keys };
             
-            bool success = await _commandSender.SendCommandAsync(
+            bool success = (await _commandSender.SendCommandAsync(
                 chargePointId, 
                 "GetConfiguration", 
                 request, 
-                cancellationToken);
+                cancellationToken)).Success;
 
             if (success)
             {
@@ -107,11 +107,11 @@ public class ChargerConfigurationService
                 Value = value
             };
 
-            bool success = await _commandSender.SendCommandAsync(
+            bool success = (await _commandSender.SendCommandAsync(
                 chargePointId, 
                 "ChangeConfiguration", 
                 request, 
-                cancellationToken);
+                cancellationToken)).Success;
 
             if (success)
             {
