@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using HASmartCharge.Backend.OCPP.Models;
 using Microsoft.Extensions.Logging;
 
@@ -24,9 +25,9 @@ public class ChargerStatusTracker
     /// </summary>
     public void OnChargerConnected(string chargePointId)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus 
-        { 
-            ChargePointId = id 
+        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        {
+            ChargePointId = id
         });
 
         status.IsConnected = true;
@@ -61,8 +62,8 @@ public class ChargerStatusTracker
     /// </summary>
     public void OnBootNotification(string chargePointId, BootNotificationRequest request)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus 
-        { 
+        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
@@ -82,7 +83,7 @@ public class ChargerStatusTracker
 
         status.LastUpdated = DateTime.UtcNow;
 
-        _logger.LogInformation("Updated charger info for {ChargePointId}: {Vendor} {Model}", 
+        _logger.LogInformation("Updated charger info for {ChargePointId}: {Vendor} {Model}",
             chargePointId, request.ChargePointVendor, request.ChargePointModel);
     }
 
@@ -95,16 +96,16 @@ public class ChargerStatusTracker
     /// </summary>
     public void OnStatusNotification(string chargePointId, StatusNotificationRequest request)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus 
-        { 
+        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(request.ConnectorId, id => new ConnectorStatus 
-        { 
-            ConnectorId = id 
+        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(request.ConnectorId, id => new ConnectorStatus
+        {
+            ConnectorId = id
         });
 
         connectorStatus.Status = request.Status;
@@ -116,7 +117,7 @@ public class ChargerStatusTracker
 
         status.LastUpdated = DateTime.UtcNow;
 
-        _logger.LogDebug("Updated status for {ChargePointId} connector {ConnectorId}: {Status}", 
+        _logger.LogDebug("Updated status for {ChargePointId} connector {ConnectorId}: {Status}",
             chargePointId, request.ConnectorId, request.Status);
     }
 
@@ -129,16 +130,16 @@ public class ChargerStatusTracker
     /// </summary>
     public void OnStartTransaction(string chargePointId, StartTransactionRequest request, int transactionId)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus 
-        { 
+        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(request.ConnectorId, id => new ConnectorStatus 
-        { 
-            ConnectorId = id 
+        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(request.ConnectorId, id => new ConnectorStatus
+        {
+            ConnectorId = id
         });
 
         connectorStatus.ActiveTransactionId = transactionId;
@@ -147,7 +148,7 @@ public class ChargerStatusTracker
 
         status.LastUpdated = DateTime.UtcNow;
 
-        _logger.LogInformation("Transaction {TransactionId} started on {ChargePointId} connector {ConnectorId}", 
+        _logger.LogInformation("Transaction {TransactionId} started on {ChargePointId} connector {ConnectorId}",
             transactionId, chargePointId, request.ConnectorId);
     }
 
@@ -170,7 +171,7 @@ public class ChargerStatusTracker
 
                 status.LastUpdated = DateTime.UtcNow;
 
-                _logger.LogInformation("Transaction {TransactionId} stopped on {ChargePointId} connector {ConnectorId}", 
+                _logger.LogInformation("Transaction {TransactionId} stopped on {ChargePointId} connector {ConnectorId}",
                     request.TransactionId, chargePointId, connector.ConnectorId);
             }
         }
@@ -185,16 +186,16 @@ public class ChargerStatusTracker
     /// </summary>
     public void OnMeterValues(string chargePointId, MeterValuesRequest request)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus 
-        { 
+        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorMeasurands measurands = status.Measurands.GetOrAdd(request.ConnectorId, id => new ConnectorMeasurands 
-        { 
-            ConnectorId = id 
+        ConnectorMeasurands measurands = status.Measurands.GetOrAdd(request.ConnectorId, id => new ConnectorMeasurands
+        {
+            ConnectorId = id
         });
 
         // Process each meter value
@@ -209,7 +210,7 @@ public class ChargerStatusTracker
         measurands.LastUpdated = DateTime.UtcNow;
         status.LastUpdated = DateTime.UtcNow;
 
-        _logger.LogDebug("Updated measurands for {ChargePointId} connector {ConnectorId}", 
+        _logger.LogDebug("Updated measurands for {ChargePointId} connector {ConnectorId}",
             chargePointId, request.ConnectorId);
     }
 
@@ -234,6 +235,11 @@ public class ChargerStatusTracker
         {
             // Energy
             case "Energy.Active.Import.Register":
+                if (value.Unit?.Equals("wh", StringComparison.OrdinalIgnoreCase) ?? false)
+                {
+                    value.Value = (float.Parse(value.Value) / 1000f).ToString(CultureInfo.InvariantCulture); // Convert Wh to kWh
+                    value.Unit = "kWh";
+                }
                 measurands.EnergyActiveImportRegister = value;
                 break;
             case "Energy.Reactive.Import.Register":
@@ -307,6 +313,11 @@ public class ChargerStatusTracker
             case "RPM":
                 measurands.Rpm = value;
                 break;
+            default:
+                //Log unrecognized measurand for debugging
+                _logger.LogWarning("Received unrecognized measurand {Measurand} for {ChargePointId} connector {ConnectorId}",
+                    measurand, measurands.ConnectorId, measurands.ConnectorId);
+                break;
         }
     }
 
@@ -345,8 +356,8 @@ public class ChargerStatusTracker
     {
         if (_chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status))
         {
-            return status.Connectors.TryGetValue(connectorId, out ConnectorStatus? connectorStatus) 
-                ? connectorStatus 
+            return status.Connectors.TryGetValue(connectorId, out ConnectorStatus? connectorStatus)
+                ? connectorStatus
                 : null;
         }
         return null;
@@ -359,8 +370,8 @@ public class ChargerStatusTracker
     {
         if (_chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status))
         {
-            return status.Measurands.TryGetValue(connectorId, out ConnectorMeasurands? measurands) 
-                ? measurands 
+            return status.Measurands.TryGetValue(connectorId, out ConnectorMeasurands? measurands)
+                ? measurands
                 : null;
         }
         return null;

@@ -28,6 +28,37 @@ function MeasurandRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Ordered display config for all possible measurands.
+// Only entries whose value is non-null will be rendered.
+type MeasurandKey = Exclude<keyof import('@/types/charger').ConnectorMeasurands, 'connectorId' | 'lastUpdated'>
+
+const MEASURAND_CONFIG: { key: MeasurandKey; label: string; decimals?: number }[] = [
+  { key: 'energyActiveImportRegister', label: 'Energy (Import)' },
+  { key: 'energyActiveExportRegister', label: 'Energy (Export)' },
+  { key: 'energyReactiveImportRegister', label: 'Energy Reactive (Import)' },
+  { key: 'energyReactiveExportRegister', label: 'Energy Reactive (Export)' },
+  { key: 'powerActiveImport', label: 'Power (Import)' },
+  { key: 'powerReactiveImport', label: 'Power Reactive (Import)' },
+  { key: 'powerOffered', label: 'Power Offered' },
+  { key: 'voltageL1', label: 'Voltage L1' },
+  { key: 'voltageL2', label: 'Voltage L2' },
+  { key: 'voltageL3', label: 'Voltage L3' },
+  { key: 'voltageL1N', label: 'Voltage L1-N' },
+  { key: 'voltageL2N', label: 'Voltage L2-N' },
+  { key: 'voltageL3N', label: 'Voltage L3-N' },
+  { key: 'currentImportL1', label: 'Current Import L1' },
+  { key: 'currentImportL2', label: 'Current Import L2' },
+  { key: 'currentImportL3', label: 'Current Import L3' },
+  { key: 'currentExportL1', label: 'Current Export L1' },
+  { key: 'currentExportL2', label: 'Current Export L2' },
+  { key: 'currentExportL3', label: 'Current Export L3' },
+  { key: 'currentOffered', label: 'Current Offered' },
+  { key: 'soC', label: 'SoC', decimals: 0 },
+  { key: 'temperature', label: 'Temperature', decimals: 0 },
+  { key: 'frequency', label: 'Frequency' },
+  { key: 'rpm', label: 'RPM', decimals: 0 },
+]
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -100,15 +131,12 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
         </div>
       )}
 
-      {/* Measurands */}
-      {measurands && (
+      {/* Measurands — only render rows that have a non-null value */}
+      {measurands && MEASURAND_CONFIG.some(({ key }) => measurands[key] !== null) && (
         <div className="space-y-1">
-          <MeasurandRow label="Energy (Import)" value={fmt(measurands.energyActiveImportRegister)} />
-          <MeasurandRow label="Power (Import)" value={fmt(measurands.powerActiveImport)} />
-          <MeasurandRow label="Voltage L1" value={fmt(measurands.voltageL1)} />
-          <MeasurandRow label="Current L1" value={fmt(measurands.currentImportL1)} />
-          <MeasurandRow label="SoC" value={fmt(measurands.soC, 0)} />
-          <MeasurandRow label="Temperature" value={fmt(measurands.temperature, 0)} />
+          {MEASURAND_CONFIG.filter(({ key }) => measurands[key] !== null).map(({ key, label, decimals }) => (
+            <MeasurandRow key={key} label={label} value={fmt(measurands[key], decimals)} />
+          ))}
         </div>
       )}
 
