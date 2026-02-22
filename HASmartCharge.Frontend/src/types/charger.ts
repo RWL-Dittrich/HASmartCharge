@@ -163,7 +163,10 @@ export interface StartTransactionRequest {
 }
 
 export interface CommandResponse {
-  dispatched: boolean
+  success: boolean
   chargerId: string
+  response?: unknown
+  errorCode?: string
+  errorDescription?: string
   [key: string]: unknown
 }

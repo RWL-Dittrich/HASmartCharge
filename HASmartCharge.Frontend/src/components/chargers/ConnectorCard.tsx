@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Unlock, Zap, ZapOff, Play, Square } from 'lucide-react'
 import type { ConnectorDetail, MeasurandValue } from '@/types/charger'
 import { ConnectorStatusBadge } from './ConnectorStatusBadge'
@@ -71,6 +71,8 @@ interface ConnectorCardProps {
 export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
   const [idTagInput, setIdTagInput] = useState('')
   const [showStartForm, setShowStartForm] = useState(false)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const unlock = useUnlockConnector(chargerId)
   const setAvail = useSetAvailability(chargerId)
@@ -82,11 +84,26 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
   const isUnavailable = status === 'Unavailable'
   const hasTransaction = connector.activeTransactionId !== null
 
+  function showSuccess(msg: string) {
+    if (successTimerRef.current !== null) clearTimeout(successTimerRef.current)
+    setSuccessMsg(msg)
+    successTimerRef.current = setTimeout(() => {
+      setSuccessMsg(null)
+      successTimerRef.current = null
+    }, 4000)
+  }
+
   function handleStartTransaction() {
     if (!idTagInput.trim()) return
     startTx.mutate(
       { connectorId, idTag: idTagInput.trim() },
-      { onSuccess: () => { setIdTagInput(''); setShowStartForm(false) } },
+      {
+        onSuccess: () => {
+          setIdTagInput('')
+          setShowStartForm(false)
+          showSuccess('Transaction started')
+        },
+      },
     )
   }
 
@@ -144,7 +161,9 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
       <div className="flex flex-wrap gap-2 pt-1">
         {/* Unlock */}
         <button
-          onClick={() => unlock.mutate(connectorId)}
+          onClick={() => unlock.mutate(connectorId, {
+            onSuccess: () => showSuccess('Connector unlocked'),
+          })}
           disabled={unlock.isPending}
           className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-[#8892a4] border border-[#2a3042] hover:text-white hover:border-[#3a4155] transition-colors disabled:opacity-50"
         >
@@ -155,7 +174,9 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
         {/* Set Operative / Inoperative */}
         {isUnavailable ? (
           <button
-            onClick={() => setAvail.mutate({ connectorId, type: 'Operative' })}
+            onClick={() => setAvail.mutate({ connectorId, type: 'Operative' }, {
+              onSuccess: () => showSuccess('Set operative'),
+            })}
             disabled={setAvail.isPending}
             className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
           >
@@ -164,7 +185,9 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
           </button>
         ) : (
           <button
-            onClick={() => setAvail.mutate({ connectorId, type: 'Inoperative' })}
+            onClick={() => setAvail.mutate({ connectorId, type: 'Inoperative' }, {
+              onSuccess: () => showSuccess('Set inoperative'),
+            })}
             disabled={setAvail.isPending}
             className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-[#8892a4] border border-[#2a3042] hover:text-amber-400 hover:border-amber-500/30 transition-colors disabled:opacity-50"
           >
@@ -176,7 +199,9 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
         {/* Stop transaction */}
         {hasTransaction && (
           <button
-            onClick={() => stopTx.mutate({ connectorId, transactionId: connector.activeTransactionId! })}
+            onClick={() => stopTx.mutate({ connectorId, transactionId: connector.activeTransactionId! }, {
+              onSuccess: () => showSuccess('Transaction stopped'),
+            })}
             disabled={stopTx.isPending}
             className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors disabled:opacity-50"
           >
@@ -218,6 +243,9 @@ export function ConnectorCard({ chargerId, connector }: ConnectorCardProps) {
       )}
 
       {/* Command feedback */}
+      {successMsg && (
+        <p className="text-[11px] text-emerald-400">✓ {successMsg}</p>
+      )}
       {(unlock.isError || setAvail.isError || startTx.isError || stopTx.isError) && (
         <p className="text-[11px] text-red-400">
           {(

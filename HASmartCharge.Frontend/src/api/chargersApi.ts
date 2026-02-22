@@ -26,12 +26,13 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     let message = `HTTP ${response.status}`
     try {
       const body = await response.json()
-      message = body?.error ?? message
+      message = body?.error ?? body?.errorDescription ?? message
     } catch {
       // ignore parse failure
     }
 
     if (response.status === 404) throw new ApiError(404, message)
+    if (response.status === 502) throw new ApiError(502, `Charger rejected command — ${message}`)
     if (response.status === 503) throw new ApiError(503, `Charger offline — ${message}`)
     throw new ApiError(response.status, message)
   }
