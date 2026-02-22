@@ -56,7 +56,7 @@ export function ChargerCommandsMenu({ chargerId, isConnected }: ChargerCommandsM
   function handleReset(type: ResetType) {
     setOpen(false)
     reset.mutate(type, {
-      onSuccess: () => setFeedback(`Reset (${type}) dispatched`),
+      onSuccess: () => setFeedback(`Reset (${type}) accepted`),
       onError: (err) => setFeedback((err as Error).message),
     })
   }
@@ -64,7 +64,7 @@ export function ChargerCommandsMenu({ chargerId, isConnected }: ChargerCommandsM
   function handleClearCache() {
     setOpen(false)
     clear.mutate(undefined, {
-      onSuccess: () => setFeedback('ClearCache dispatched'),
+      onSuccess: () => setFeedback('ClearCache accepted'),
       onError: (err) => setFeedback((err as Error).message),
     })
   }
@@ -72,7 +72,7 @@ export function ChargerCommandsMenu({ chargerId, isConnected }: ChargerCommandsM
   function handleTrigger(requestedMessage: string) {
     setOpen(false)
     trigger.mutate({ requestedMessage }, {
-      onSuccess: () => setFeedback(`TriggerMessage (${requestedMessage}) dispatched`),
+      onSuccess: () => setFeedback(`TriggerMessage (${requestedMessage}) accepted`),
       onError: (err) => setFeedback((err as Error).message),
     })
   }
