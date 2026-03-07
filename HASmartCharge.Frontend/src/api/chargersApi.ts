@@ -4,6 +4,7 @@ import type {
   ConnectorsListResponse,
   ConnectorDetail,
   TransactionsListResponse,
+  DashboardSummary,
   CommandResponse,
   ResetRequest,
   TriggerMessageRequest,
@@ -48,6 +49,14 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
+export function getDashboardSummary(): Promise<DashboardSummary> {
+  return apiFetch<DashboardSummary>('/api/dashboard/summary')
 }
 
 // ---------------------------------------------------------------------------

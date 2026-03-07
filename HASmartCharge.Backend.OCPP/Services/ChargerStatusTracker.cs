@@ -443,6 +443,22 @@ public class ChargerStatusTracker
     }
 
     /// <summary>
+    /// Get all active transactions across every charger, including measurand data.
+    /// Used by the dashboard summary endpoint.
+    /// </summary>
+    public IEnumerable<(string ChargePointId, ConnectorStatus Connector, ConnectorMeasurands? Measurands)> GetAllActiveTransactions()
+    {
+        return _chargerStatuses.Values
+            .SelectMany(status => status.Connectors.Values
+                .Where(c => c.ActiveTransactionId.HasValue)
+                .Select(c =>
+                {
+                    status.Measurands.TryGetValue(c.ConnectorId, out ConnectorMeasurands? measurands);
+                    return (status.ChargePointId, c, measurands);
+                }));
+    }
+
+    /// <summary>
     /// Remove a charger from tracking (cleanup)
     /// </summary>
     public void RemoveCharger(string chargePointId)

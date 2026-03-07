@@ -132,6 +132,31 @@ export interface TransactionsListResponse {
   transactions: ActiveTransaction[]
 }
 
+// ── Dashboard summary ─────────────────────────────────────────────────────────
+
+export interface DashboardTransaction {
+  chargePointId: string
+  connectorId: number
+  transactionId: number
+  idTag: string | null
+  startTime: string | null
+  connectorStatus: ConnectorStatus | null
+  energyActiveImportWh: MeasurandValue | null
+  powerActiveImport: MeasurandValue | null
+}
+
+export interface DashboardSummary {
+  totalChargers: number
+  onlineChargers: number
+  offlineChargers: number
+  totalConnectors: number
+  connectorsByStatus: Record<ConnectorStatus, number>
+  activeTransactions: DashboardTransaction[]
+  totalActiveTransactions: number
+  totalPowerDrawKw: number
+  totalEnergyDeliveredKwh: number
+}
+
 // ── Command request / response types ─────────────────────────────────────────
 
 export type ResetType = 'Hard' | 'Soft'
