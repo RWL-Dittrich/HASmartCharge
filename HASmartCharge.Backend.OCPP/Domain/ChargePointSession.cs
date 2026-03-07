@@ -16,7 +16,7 @@ public class ChargePointSession : IChargePointSession
     private readonly ILogger<ChargePointSession> _logger;
     private readonly ChargerStatusTracker _statusTracker;
     private readonly ChargerConfigurationService _configurationService;
-    private int _transactionCounter;
+    private readonly IOcppPersistence _persistence;
     private int _messageIdCounter;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<OcppCommandResult>> _pendingCommands = new();
@@ -26,13 +26,15 @@ public class ChargePointSession : IChargePointSession
         IConnection connection,
         ILogger<ChargePointSession> logger,
         ChargerStatusTracker statusTracker,
-        ChargerConfigurationService configurationService)
+        ChargerConfigurationService configurationService,
+        IOcppPersistence persistence)
     {
         ChargePointId = chargePointId ?? throw new ArgumentNullException(nameof(chargePointId));
         Connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _statusTracker = statusTracker ?? throw new ArgumentNullException(nameof(statusTracker));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
+        _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         
         ConnectedAt = DateTime.UtcNow;
         IsActive = true;
@@ -51,6 +53,16 @@ public class ChargePointSession : IChargePointSession
         
         // Update status tracker
         _statusTracker.OnChargerConnected(ChargePointId);
+        
+        // Persist the charger immediately on connect (no boot data yet)
+        try
+        {
+            await _persistence.UpsertChargerAsync(ChargePointId, bootInfo: null, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{ChargePointId}] Failed to persist charger on connect", ChargePointId);
+        }
         
         // Trigger BootNotification and configuration in background
         // Note: Not awaited intentionally - initialization continues in parallel with message processing
@@ -143,7 +155,7 @@ public class ChargePointSession : IChargePointSession
 
     #region Inbound OCPP Handlers (CP -> CS)
 
-    private Task<object> HandleBootNotificationAsync(JsonElement payload)
+    private async Task<object> HandleBootNotificationAsync(JsonElement payload)
     {
         BootNotificationRequest? request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
 
@@ -156,6 +168,22 @@ public class ChargePointSession : IChargePointSession
         if (request != null)
         {
             _statusTracker.OnBootNotification(ChargePointId, request);
+
+            // Persist boot info to DB
+            try
+            {
+                await _persistence.UpsertChargerAsync(ChargePointId, new OcppBootInfo
+                {
+                    Vendor = request.ChargePointVendor,
+                    Model = request.ChargePointModel,
+                    SerialNumber = request.ChargePointSerialNumber,
+                    FirmwareVersion = request.FirmwareVersion
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[{ChargePointId}] Failed to persist boot notification", ChargePointId);
+            }
         }
 
         BootNotificationResponse response = new BootNotificationResponse
@@ -165,7 +193,7 @@ public class ChargePointSession : IChargePointSession
             Interval = 60
         };
 
-        return Task.FromResult<object>(response);
+        return response;
     }
 
     private Task<object> HandleHeartbeatAsync(JsonElement payload)
@@ -199,24 +227,46 @@ public class ChargePointSession : IChargePointSession
         return Task.FromResult<object>(response);
     }
 
-    private Task<object> HandleStartTransactionAsync(JsonElement payload)
+    private async Task<object> HandleStartTransactionAsync(JsonElement payload)
     {
         StartTransactionRequest? request = JsonSerializer.Deserialize<StartTransactionRequest>(payload.GetRawText());
 
-        int transactionId = Interlocked.Increment(ref _transactionCounter);
+        if (request is null)
+        {
+            return new StartTransactionResponse
+            {
+                TransactionId = 0,
+                IdTagInfo = new IdTagInfo { Status = "Invalid" }
+            };
+        }
+
+        // Get a stable transaction ID from the database
+        int transactionId;
+        try
+        {
+            transactionId = await _persistence.BeginTransactionAsync(
+                ChargePointId,
+                request.ConnectorId,
+                request.IdTag,
+                request.Timestamp,
+                request.MeterStart);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{ChargePointId}] Failed to persist StartTransaction", ChargePointId);
+            // Fallback: still accept the transaction but log the error
+            transactionId = Environment.TickCount;
+        }
 
         _logger.LogInformation(
             "[{ChargePointId}] StartTransaction: Connector={Connector}, IdTag={IdTag}, MeterStart={MeterStart}, TransactionId={TransactionId}",
             ChargePointId,
-            request?.ConnectorId,
-            request?.IdTag,
-            request?.MeterStart,
+            request.ConnectorId,
+            request.IdTag,
+            request.MeterStart,
             transactionId);
 
-        if (request != null)
-        {
-            _statusTracker.OnStartTransaction(ChargePointId, request, transactionId);
-        }
+        _statusTracker.OnStartTransaction(ChargePointId, request, transactionId);
 
         StartTransactionResponse response = new StartTransactionResponse
         {
@@ -228,10 +278,10 @@ public class ChargePointSession : IChargePointSession
             }
         };
 
-        return Task.FromResult<object>(response);
+        return response;
     }
 
-    private Task<object> HandleStopTransactionAsync(JsonElement payload)
+    private async Task<object> HandleStopTransactionAsync(JsonElement payload)
     {
         StopTransactionRequest? request = JsonSerializer.Deserialize<StopTransactionRequest>(payload.GetRawText());
 
@@ -246,6 +296,21 @@ public class ChargePointSession : IChargePointSession
         if (request != null)
         {
             _statusTracker.OnStopTransaction(ChargePointId, request);
+
+            // Persist to DB
+            try
+            {
+                await _persistence.CompleteTransactionAsync(
+                    request.TransactionId,
+                    request.Timestamp,
+                    request.MeterStop,
+                    request.Reason);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[{ChargePointId}] Failed to persist StopTransaction {TransactionId}",
+                    ChargePointId, request.TransactionId);
+            }
         }
 
         StopTransactionResponse response = new StopTransactionResponse
@@ -256,7 +321,7 @@ public class ChargePointSession : IChargePointSession
             }
         };
 
-        return Task.FromResult<object>(response);
+        return response;
     }
 
     private Task<object> HandleMeterValuesAsync(JsonElement payload)
@@ -293,7 +358,7 @@ public class ChargePointSession : IChargePointSession
         return Task.FromResult<object>(response);
     }
 
-    private Task<object> HandleStatusNotificationAsync(JsonElement payload)
+    private async Task<object> HandleStatusNotificationAsync(JsonElement payload)
     {
         StatusNotificationRequest? request = JsonSerializer.Deserialize<StatusNotificationRequest>(payload.GetRawText());
 
@@ -307,10 +372,28 @@ public class ChargePointSession : IChargePointSession
         if (request != null)
         {
             _statusTracker.OnStatusNotification(ChargePointId, request);
+
+            // Persist connector to DB (only real connectors, not connector 0 which is the charger itself)
+            if (request.ConnectorId > 0)
+            {
+                try
+                {
+                    await _persistence.UpsertConnectorAsync(
+                        ChargePointId,
+                        request.ConnectorId,
+                        request.Status,
+                        request.ErrorCode);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[{ChargePointId}] Failed to persist connector {ConnectorId} status",
+                        ChargePointId, request.ConnectorId);
+                }
+            }
         }
 
         StatusNotificationResponse response = new StatusNotificationResponse();
-        return Task.FromResult<object>(response);
+        return response;
     }
 
     private Task<object> HandleDataTransferAsync(JsonElement payload)

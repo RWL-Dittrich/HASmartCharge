@@ -53,6 +53,9 @@ builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConn
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender, HASmartCharge.Backend.OCPP.Services.SessionCommandSender>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
 
+// OCPP persistence (uses IServiceScopeFactory internally for short-lived DbContext scopes)
+builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.IOcppPersistence, HASmartCharge.Backend.DB.OcppRepository>();
+
 WebApplication app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -78,6 +81,13 @@ app.MapControllers();
     {
         await dbContext.Database.MigrateAsync();
     }
+    
+    // Seed the in-memory charger status tracker from the database
+    // so the API shows all known chargers (as disconnected) before any WebSocket connections arrive
+    IOcppPersistence persistence = app.Services.GetRequiredService<IOcppPersistence>();
+    ChargerStatusTracker statusTracker = app.Services.GetRequiredService<ChargerStatusTracker>();
+    List<PersistedCharger> knownChargers = await persistence.GetAllChargersAsync();
+    statusTracker.SeedFromDatabase(knownChargers);
     
     // Initialize the Home Assistant connection manager
     IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();

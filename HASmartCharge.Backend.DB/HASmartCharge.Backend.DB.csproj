@@ -10,4 +10,8 @@
       <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.3" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\HASmartCharge.Backend.OCPP\HASmartCharge.Backend.OCPP.csproj" />
+    </ItemGroup>
+
 </Project>

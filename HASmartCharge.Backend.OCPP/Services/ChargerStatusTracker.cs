@@ -18,6 +18,60 @@ public class ChargerStatusTracker
         _logger = logger;
     }
 
+    #region Startup Seeding
+
+    /// <summary>
+    /// Seed the in-memory tracker from persisted chargers.
+    /// Called once at startup so the API shows all known chargers (as disconnected)
+    /// before any WebSocket connections arrive.
+    /// </summary>
+    public void SeedFromDatabase(IEnumerable<PersistedCharger> chargers)
+    {
+        int count = 0;
+        foreach (PersistedCharger charger in chargers)
+        {
+            ChargerStatus status = _chargerStatuses.GetOrAdd(charger.ChargePointId, id => new ChargerStatus
+            {
+                ChargePointId = id
+            });
+
+            // Mark as disconnected — a live WebSocket connect will flip this to true
+            status.IsConnected = false;
+            status.LastUpdated = charger.LastConnectedAt;
+            status.ConnectedAt = charger.LastConnectedAt;
+
+            // Populate boot info if we have it
+            if (charger.Vendor is not null || charger.Model is not null)
+            {
+                status.Info = new ChargerInfo
+                {
+                    Vendor = charger.Vendor,
+                    Model = charger.Model,
+                    SerialNumber = charger.SerialNumber,
+                    FirmwareVersion = charger.FirmwareVersion
+                };
+            }
+
+            // Populate connector statuses
+            foreach (PersistedConnector connector in charger.Connectors)
+            {
+                ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(connector.ConnectorId, id => new ConnectorStatus
+                {
+                    ConnectorId = id
+                });
+
+                connectorStatus.Status = connector.LastStatus ?? "Unknown";
+                connectorStatus.ErrorCode = connector.LastErrorCode ?? "NoError";
+            }
+
+            count++;
+        }
+
+        _logger.LogInformation("Seeded {Count} chargers from database into status tracker", count);
+    }
+
+    #endregion
+
     #region Connection Management
 
     /// <summary>

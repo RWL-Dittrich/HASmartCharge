@@ -20,6 +20,7 @@ public class OcppConnectionOrchestrator
     private readonly IOcppMessageRouter _messageRouter;
     private readonly ChargerStatusTracker _statusTracker;
     private readonly ChargerConfigurationService _configurationService;
+    private readonly IOcppPersistence _persistence;
 
     public OcppConnectionOrchestrator(
         ILogger<OcppConnectionOrchestrator> logger,
@@ -28,7 +29,8 @@ public class OcppConnectionOrchestrator
         ISessionManager sessionManager,
         IOcppMessageRouter messageRouter,
         ChargerStatusTracker statusTracker,
-        ChargerConfigurationService configurationService)
+        ChargerConfigurationService configurationService,
+        IOcppPersistence persistence)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
@@ -37,6 +39,7 @@ public class OcppConnectionOrchestrator
         _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
         _statusTracker = statusTracker ?? throw new ArgumentNullException(nameof(statusTracker));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
+        _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
     }
 
     /// <summary>
@@ -68,7 +71,8 @@ public class OcppConnectionOrchestrator
             connection,
             _loggerFactory.CreateLogger<ChargePointSession>(),
             _statusTracker,
-            _configurationService);
+            _configurationService,
+            _persistence);
 
         // Register session
         _sessionManager.RegisterSession(session);
