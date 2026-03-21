@@ -661,7 +661,7 @@ Domain → (nothing)
   - "Once direct OnFoo() mutations have been replaced by event handlers, relocate ChargerStatusTracker to the application layer as a pure read-model implementation."
 
 ### TASK-027 — Review and rename misleading `Domain` usage inside the OCPP project
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P2
 - **Why:** The current OCPP `Domain/` folder is not a true domain layer and will confuse future development.
 - **Scope:**
@@ -671,6 +671,10 @@ Domain → (nothing)
   - The project no longer mislabels protocol/session infrastructure as domain logic.
 - **Suggested agent brief:**
   - “Clean up misleading folder/namespace naming inside the OCPP project so ‘domain’ is reserved for the real domain model.”
+- **Completed work:**
+  - Renamed namespace `HASmartCharge.Backend.OCPP.Domain` → `HASmartCharge.Backend.OCPP.Sessions` in all 4 files: `ISessionManager.cs`, `SessionManager.cs`, `IChargePointSession.cs`, `ChargePointSession.cs` (files remain in `Domain/` folder; namespace reflects purpose).
+  - Updated all callers: `OcppMessageRouter.cs`, `OcppConnectionOrchestrator.cs`, `ICommandSender.cs` (also fixed qualified `Domain.ISessionManager` references), `ChargerCommandsController.cs`, and `Program.cs` (fully-qualified DI registration).
+  - Solution builds with 0 errors.
 
 ### TASK-028 — Evaluate renaming projects to adapter-oriented names
 - **Status:** TODO
