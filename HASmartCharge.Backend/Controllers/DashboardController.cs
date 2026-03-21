@@ -13,7 +13,7 @@ namespace HASmartCharge.Backend.Controllers;
 [Produces("application/json")]
 public class DashboardController : ControllerBase
 {
-    private static readonly string[] KnownConnectorStatuses =
+    private static readonly string[] _knownConnectorStatuses =
     [
         "Available",
         "Preparing",
@@ -53,7 +53,7 @@ public class DashboardController : ControllerBase
             .ToList();
 
         // Count connectors by OCPP status
-        Dictionary<string, int> connectorsByStatus = KnownConnectorStatuses
+        Dictionary<string, int> connectorsByStatus = _knownConnectorStatuses
             .Concat(["Unknown"])
             .ToDictionary(status => status, _ => 0);
 

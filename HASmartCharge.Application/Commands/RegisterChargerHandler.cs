@@ -14,7 +14,7 @@ public sealed class RegisterChargerHandler
 
     public async Task HandleAsync(RegisterChargerCommand command, CancellationToken ct = default)
     {
-        var charger = await _chargers.GetByIdAsync(command.ChargePointId, ct);
+        Charger? charger = await _chargers.GetByIdAsync(command.ChargePointId, ct);
         if (charger is null)
         {
             charger = Charger.Register(command.ChargePointId, command.Vendor, command.Model, command.SerialNumber, command.FirmwareVersion);

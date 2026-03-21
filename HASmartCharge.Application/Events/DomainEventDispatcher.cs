@@ -12,8 +12,8 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
 
     public void Register<TEvent>(IDomainEventHandler<TEvent> handler) where TEvent : IDomainEvent
     {
-        var type = typeof(TEvent);
-        if (!_handlers.TryGetValue(type, out var list))
+        Type type = typeof(TEvent);
+        if (!_handlers.TryGetValue(type, out List<Func<IDomainEvent, CancellationToken, Task>>? list))
         {
             list = [];
             _handlers[type] = list;
@@ -23,14 +23,14 @@ public sealed class DomainEventDispatcher : IDomainEventDispatcher
 
     public async Task DispatchAsync(IDomainEvent domainEvent, CancellationToken ct = default)
     {
-        if (_handlers.TryGetValue(domainEvent.GetType(), out var handlers))
-            foreach (var handler in handlers)
+        if (_handlers.TryGetValue(domainEvent.GetType(), out List<Func<IDomainEvent, CancellationToken, Task>>? handlers))
+            foreach (Func<IDomainEvent, CancellationToken, Task> handler in handlers)
                 await handler(domainEvent, ct);
     }
 
     public async Task DispatchAllAsync(IEnumerable<IDomainEvent> events, CancellationToken ct = default)
     {
-        foreach (var domainEvent in events)
+        foreach (IDomainEvent domainEvent in events)
             await DispatchAsync(domainEvent, ct);
     }
 }

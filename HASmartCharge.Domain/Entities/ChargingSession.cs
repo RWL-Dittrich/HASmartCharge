@@ -42,7 +42,7 @@ public sealed class ChargingSession
         int meterStartWh, DateTimeOffset startedAt,
         int? meterStopWh, string? stopReason, DateTimeOffset? completedAt)
     {
-        var session = new ChargingSession
+        ChargingSession session = new ChargingSession
         {
             TransactionId = transactionId,
             ChargePointId = chargePointId,

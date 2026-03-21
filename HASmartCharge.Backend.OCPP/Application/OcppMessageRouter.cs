@@ -1,5 +1,5 @@
 using System.Text.Json;
-using HASmartCharge.Backend.OCPP.Sessions;
+using HASmartCharge.Backend.OCPP.Domain;
 using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Transport;
 using Microsoft.Extensions.Logging;

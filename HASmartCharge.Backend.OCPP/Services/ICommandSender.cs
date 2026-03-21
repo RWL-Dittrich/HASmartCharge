@@ -1,4 +1,4 @@
-using HASmartCharge.Backend.OCPP.Sessions;
+using HASmartCharge.Backend.OCPP.Domain;
 using HASmartCharge.Backend.OCPP.Models;
 
 namespace HASmartCharge.Backend.OCPP.Services;

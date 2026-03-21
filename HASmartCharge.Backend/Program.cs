@@ -11,9 +11,9 @@ using HASmartCharge.Backend.HomeAssistant.Models;
 using HASmartCharge.Backend.HomeAssistant.EventHandlers;
 using HASmartCharge.Backend.HomeAssistant.Services;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
+using HASmartCharge.Backend.OCPP.Domain;
 using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -55,7 +55,7 @@ builder.Services.AddSingleton<IChargerReadModel>(serviceProvider =>
     serviceProvider.GetRequiredService<ChargerStatusTracker>());
 
 // New architecture components
-builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Sessions.ISessionManager, HASmartCharge.Backend.OCPP.Sessions.SessionManager>();
+builder.Services.AddSingleton<ISessionManager, SessionManager>();
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Application.IOcppMessageRouter, HASmartCharge.Backend.OCPP.Application.OcppMessageRouter>();
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConnectionOrchestrator>();
 
@@ -98,8 +98,8 @@ app.MapControllers();
 
 // Wire domain event handlers to the dispatcher
 {
-    var dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
-    var tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
+    DomainEventDispatcher dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
+    ChargerStatusTracker tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
     dispatcher.Register<ChargerConnected>(tracker);
     dispatcher.Register<ChargerDisconnected>(tracker);
     dispatcher.Register<ChargerRegistered>(tracker);
@@ -107,7 +107,7 @@ app.MapControllers();
     dispatcher.Register<ChargingSessionCompleted>(tracker);
     dispatcher.Register<ConnectorStatusUpdated>(tracker);
 
-    var haHandler = app.Services.GetRequiredService<HomeAutomationEventHandler>();
+    HomeAutomationEventHandler haHandler = app.Services.GetRequiredService<HomeAutomationEventHandler>();
     dispatcher.Register<ChargerConnected>(haHandler);
     dispatcher.Register<ChargerDisconnected>(haHandler);
     dispatcher.Register<ConnectorStatusUpdated>(haHandler);

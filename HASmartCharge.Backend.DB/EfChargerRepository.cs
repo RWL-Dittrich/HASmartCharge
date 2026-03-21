@@ -2,6 +2,7 @@ using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Backend.DB.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Connector = HASmartCharge.Domain.Entities.Connector;
 
 namespace HASmartCharge.Backend.DB;
 
@@ -16,9 +17,9 @@ public sealed class EfChargerRepository : IChargerRepository
 
     public async Task<Domain.Entities.Charger?> GetByIdAsync(string chargePointId, CancellationToken ct = default)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var efCharger = await db.Chargers
+        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Charger? efCharger = await db.Chargers
             .Include(c => c.Connectors)
             .FirstOrDefaultAsync(c => c.ChargePointId == chargePointId, ct);
         return efCharger is null ? null : ToDomain(efCharger);
@@ -26,9 +27,9 @@ public sealed class EfChargerRepository : IChargerRepository
 
     public async Task<IReadOnlyList<Domain.Entities.Charger>> GetAllAsync(CancellationToken ct = default)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var efChargers = await db.Chargers
+        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        List<Charger> efChargers = await db.Chargers
             .Include(c => c.Connectors)
             .ToListAsync(ct);
         return efChargers.Select(ToDomain).ToList().AsReadOnly();
@@ -36,10 +37,10 @@ public sealed class EfChargerRepository : IChargerRepository
 
     public async Task SaveAsync(Domain.Entities.Charger charger, CancellationToken ct = default)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        var efCharger = await db.Chargers
+        Charger? efCharger = await db.Chargers
             .Include(c => c.Connectors)
             .FirstOrDefaultAsync(c => c.ChargePointId == charger.ChargePointId, ct);
 
@@ -64,9 +65,9 @@ public sealed class EfChargerRepository : IChargerRepository
             efCharger.LastConnectedAt = charger.LastConnectedAt.Value.UtcDateTime;
 
         // Sync connectors
-        foreach (var connector in charger.Connectors)
+        foreach (Connector connector in charger.Connectors)
         {
-            var efConnector = efCharger.Connectors
+            Models.Connector? efConnector = efCharger.Connectors
                 .FirstOrDefault(c => c.ConnectorId == connector.ConnectorId);
             if (efConnector is null)
             {
