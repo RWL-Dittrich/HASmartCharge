@@ -52,7 +52,7 @@ builder.Services.AddSingleton<IChargerReadModel>(serviceProvider =>
     serviceProvider.GetRequiredService<ChargerStatusTracker>());
 
 // New architecture components
-builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Domain.ISessionManager, HASmartCharge.Backend.OCPP.Domain.SessionManager>();
+builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Sessions.ISessionManager, HASmartCharge.Backend.OCPP.Sessions.SessionManager>();
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Application.IOcppMessageRouter, HASmartCharge.Backend.OCPP.Application.OcppMessageRouter>();
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConnectionOrchestrator>();
 

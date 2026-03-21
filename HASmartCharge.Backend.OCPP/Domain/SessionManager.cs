@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
-namespace HASmartCharge.Backend.OCPP.Domain;
+namespace HASmartCharge.Backend.OCPP.Sessions;
 
 /// <summary>
 /// Manages active charge point sessions

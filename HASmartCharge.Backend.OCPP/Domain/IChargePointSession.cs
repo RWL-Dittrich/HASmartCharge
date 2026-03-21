@@ -2,7 +2,7 @@ using System.Text.Json;
 using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Transport;
 
-namespace HASmartCharge.Backend.OCPP.Domain;
+namespace HASmartCharge.Backend.OCPP.Sessions;
 
 /// <summary>
 /// Represents a connected charge point session

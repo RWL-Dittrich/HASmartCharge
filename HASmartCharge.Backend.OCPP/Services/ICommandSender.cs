@@ -1,4 +1,4 @@
-using HASmartCharge.Backend.OCPP.Domain;
+using HASmartCharge.Backend.OCPP.Sessions;
 using HASmartCharge.Backend.OCPP.Models;
 
 namespace HASmartCharge.Backend.OCPP.Services;
@@ -16,9 +16,9 @@ public interface ICommandSender
 /// </summary>
 public class SessionCommandSender : ICommandSender
 {
-    private readonly Domain.ISessionManager _sessionManager;
+    private readonly ISessionManager _sessionManager;
 
-    public SessionCommandSender(Domain.ISessionManager sessionManager)
+    public SessionCommandSender(ISessionManager sessionManager)
     {
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
     }

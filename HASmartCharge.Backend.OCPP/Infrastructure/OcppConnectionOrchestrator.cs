@@ -2,7 +2,7 @@ using System.Net.WebSockets;
 using HASmartCharge.Application.Commands;
 using HASmartCharge.Application.Events;
 using HASmartCharge.Backend.OCPP.Application;
-using HASmartCharge.Backend.OCPP.Domain;
+using HASmartCharge.Backend.OCPP.Sessions;
 using HASmartCharge.Backend.OCPP.Services;
 using HASmartCharge.Backend.OCPP.Transport;
 using Microsoft.Extensions.Logging;

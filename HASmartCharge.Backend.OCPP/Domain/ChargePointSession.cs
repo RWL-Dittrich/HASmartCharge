@@ -8,7 +8,7 @@ using HASmartCharge.Backend.OCPP.Transport;
 using HASmartCharge.Domain.Events;
 using Microsoft.Extensions.Logging;
 
-namespace HASmartCharge.Backend.OCPP.Domain;
+namespace HASmartCharge.Backend.OCPP.Sessions;
 
 /// <summary>
 /// Represents a single connected charge point session
