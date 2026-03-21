@@ -30,8 +30,8 @@ Suggested status values:
 
 1. ~~Foundation and boundary cleanup~~ — **DONE**
 2. ~~Read model abstraction and read-controller decoupling~~ — **DONE**
-3. Outbound command abstraction (complete controller decoupling)
-4. Domain model creation (entities, events, repository interfaces, command handlers, event dispatch)
+3. ~~Outbound command abstraction (complete controller decoupling)~~ — **DONE**
+4. ~~Domain model creation (entities, events, repository interfaces, command handlers, event dispatch)~~ — **DONE**
 5. OCPP god-object breakup (ChargePointSession refactor)
 6. Persistence dependency cleanup and project naming
 7. Home Assistant isolation
@@ -339,7 +339,7 @@ Domain → (nothing)
 > **Note:** Phase 3 has no unmet dependencies and unblocks complete controller-level OCPP decoupling. Can be worked in parallel with Phase 4.
 
 ### TASK-008 — Define `IChargerGateway` in `Application`
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-002 (DONE)
 - **Why:** Command APIs should be phrased around charger capabilities, not session-manager plumbing.
@@ -347,11 +347,14 @@ Domain → (nothing)
   - Create an application-layer outbound port for charger commands such as reset, availability changes, and transaction commands.
 - **Done when:**
   - An interface exists that reflects business capabilities rather than OCPP method names.
+- **Completed work:**
+  - Created `HASmartCharge.Application/Interfaces/IChargerGateway.cs` with eight business-capability methods: `ResetChargerAsync`, `ClearCacheAsync`, `TriggerMessageAsync`, `GetDiagnosticsAsync`, `SetConnectorAvailabilityAsync`, `UnlockConnectorAsync`, `StartTransactionAsync`, `StopTransactionAsync`.
+  - Created `ChargerCommandResult` in `HASmartCharge.Application/Interfaces/ChargerCommandResult.cs` with factory methods `Succeeded`, `Failed`, `ChargerNotFound`, `ChargerOffline`.
 - **Suggested agent brief:**
   - "Define an `IChargerGateway` abstraction in the application layer for outbound charger operations without exposing OCPP implementation details."
 
 ### TASK-009 — Implement the OCPP-backed charger gateway
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-008
 - **Why:** The new outbound abstraction needs a concrete adapter.
@@ -359,11 +362,15 @@ Domain → (nothing)
   - Implement the interface using current OCPP session/session-manager behavior.
 - **Done when:**
   - The gateway works through existing OCPP infrastructure.
+- **Completed work:**
+  - Created `HASmartCharge.Backend.OCPP/Services/OcppChargerGateway.cs` implementing `IChargerGateway` via `ISessionManager` and `IChargePointSession`.
+  - `TryGetActiveSession` helper guards against not-found (404) and offline (503) scenarios.
+  - `Map` helper converts `OcppCommandResult` → `ChargerCommandResult`.
 - **Suggested agent brief:**
   - "Implement an OCPP-backed `IChargerGateway` adapter that reuses the current session infrastructure with minimal behavior change."
 
 ### TASK-010 — Refactor `ChargerCommandsController` to use `IChargerGateway`
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-009
 - **Why:** This finishes the API decoupling for command-style operations.
@@ -371,6 +378,12 @@ Domain → (nothing)
   - Update the controller to depend on the application port instead of session management details.
 - **Done when:**
   - `ChargerCommandsController` no longer depends directly on OCPP session internals.
+- **Completed work:**
+  - Rewrote `ChargerCommandsController` to inject `IChargerGateway` instead of `ISessionManager`.
+  - Removed all direct OCPP using directives and model type references from the controller.
+  - `GatewayResultToActionResult` maps `ChargerCommandResult` error codes to 404/503/502.
+  - Preserved the existing HTTP route and JSON contract for all endpoints.
+  - Registered `IChargerGateway → OcppChargerGateway` in `Program.cs`.
 - **Suggested agent brief:**
   - "Refactor `ChargerCommandsController` so it uses `IChargerGateway` instead of direct session-manager or OCPP-specific service dependencies."
 
@@ -381,7 +394,7 @@ Domain → (nothing)
 > **Note:** Phase 4 is independent from Phase 3 and can be worked in parallel.
 
 ### TASK-011 — Introduce core domain entities
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-001
 - **Why:** There is currently no meaningful domain model with behavior.
@@ -393,11 +406,16 @@ Domain → (nothing)
 - **Done when:**
   - Core entities exist with at least a few meaningful invariants or methods.
   - The domain layer remains infrastructure-free.
+- **Completed work:**
+  - Created `HASmartCharge.Domain/Entities/Charger.cs` — aggregate root with `Register()` factory, `Connect()`/`Disconnect()`/`UpdateHardwareInfo()`, connector management via `AddOrUpdateConnector()`, and internal domain event collection.
+  - Created `HASmartCharge.Domain/Entities/Connector.cs` — tracks status, error code, active session state; mutated only via `internal` methods called by `Charger`.
+  - Created `HASmartCharge.Domain/Entities/ChargingSession.cs` — lifecycle entity with `Begin()` factory and `Complete()` method.
+  - Domain layer remains infrastructure-free with no added package dependencies.
 - **Suggested agent brief:**
   - “Create initial domain entities for charger, connector, and charging session with behavior-focused APIs and no infrastructure dependencies.”
 
 ### TASK-012 — Define core domain events
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-011
 - **Why:** Side effects are currently hardwired inside protocol handlers.
@@ -406,11 +424,15 @@ Domain → (nothing)
 - **Likely touched areas:** `HASmartCharge.Domain/Events/`
 - **Done when:**
   - Domain events exist and are named around business meaning rather than protocol message types.
+- **Completed work:**
+  - Created `HASmartCharge.Domain/Events/IDomainEvent.cs` — marker interface with `OccurredAt`.
+  - Created 7 `sealed record` domain events: `ChargerRegistered`, `ChargerConnected`, `ChargerDisconnected`, `ConnectorStatusUpdated`, `ChargingSessionStarted`, `ChargingSessionCompleted`, `MeterValuesReported` (with `MeterValueEntry`).
+  - All events named around business meaning, not OCPP message names.
 - **Suggested agent brief:**
   - “Add domain event types for charger lifecycle and charging session lifecycle so side effects can be separated from protocol handling.”
 
 ### TASK-013 — Define repository interfaces in `Application`
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-002, TASK-011
 - **Why:** `IOcppPersistence` is too OCPP-branded and leaks protocol concerns into persistence.
@@ -420,11 +442,15 @@ Domain → (nothing)
 - **Likely touched areas:** `HASmartCharge.Application/Interfaces/`
 - **Done when:**
   - Repository interfaces exist without OCPP-specific DTO naming.
+- **Completed work:**
+  - Created `HASmartCharge.Application/Interfaces/IChargerRepository.cs` — `GetByIdAsync`, `GetAllAsync`, `SaveAsync`.
+  - Created `HASmartCharge.Application/Interfaces/IChargingSessionRepository.cs` — `GetByTransactionIdAsync`, `GetActiveSessionsAsync`, `BeginSessionAsync`, `SaveAsync`.
+  - Both interfaces use domain entity types, not OCPP-branded DTOs.
 - **Suggested agent brief:**
   - “Replace the architectural role of `IOcppPersistence` with application-layer repository interfaces designed around the actual charging domain.”
 
 ### TASK-014 — Introduce command handlers for core charger/session flows
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-002, TASK-011, TASK-012, TASK-013
 - **Why:** Business behavior needs a home outside controllers and protocol sessions.
@@ -434,11 +460,15 @@ Domain → (nothing)
 - **Done when:**
   - Core command handlers exist.
   - They depend on abstractions, not OCPP or EF details.
+- **Completed work:**
+  - Created command record + handler pairs for: `RegisterCharger`, `UpdateConnectorStatus`, `BeginChargingSession`, `CompleteChargingSession`.
+  - All handlers depend only on `IChargerRepository` / `IChargingSessionRepository` — no OCPP or EF dependencies.
+  - `BeginChargingSessionHandler` returns the assigned transaction ID.
 - **Suggested agent brief:**
   - “Create application command handlers for the major charger/session workflows and keep them independent from OCPP transport details.”
 
 ### TASK-015 — Add a simple in-process event dispatch mechanism
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-012, TASK-014
 - **Why:** New side effects should not require editing protocol handlers every time.
@@ -448,6 +478,11 @@ Domain → (nothing)
 - **Likely touched areas:** `HASmartCharge.Application`, DI registration, event handlers
 - **Done when:**
   - Domain/application events can be emitted and handled without tight direct coupling.
+- **Completed work:**
+  - Created `HASmartCharge.Application/Events/IDomainEventHandler<TEvent>` — typed event handler interface.
+  - Created `HASmartCharge.Application/Events/IDomainEventDispatcher` — `DispatchAsync` + `DispatchAllAsync`.
+  - Created `HASmartCharge.Application/Events/DomainEventDispatcher` — dictionary-based registry, no external packages. Handlers registered at startup via `Register<TEvent>()`.
+  - Registered `IDomainEventDispatcher → DomainEventDispatcher` as singleton in `Program.cs`.
 - **Suggested agent brief:**
   - “Implement a minimal in-process event dispatch mechanism so domain/application events can trigger persistence and read-model updates cleanly.”
 

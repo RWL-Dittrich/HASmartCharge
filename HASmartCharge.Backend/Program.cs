@@ -1,3 +1,4 @@
+using HASmartCharge.Application.Events;
 using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Backend.BackgroundServices;
 using HASmartCharge.Backend.Configuration;
@@ -57,6 +58,9 @@ builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConn
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender, HASmartCharge.Backend.OCPP.Services.SessionCommandSender>();
 builder.Services.AddSingleton<IChargerGateway, OcppChargerGateway>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
+
+// Domain event dispatcher (handlers registered in future phases)
+builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
 
 // OCPP persistence (uses IServiceScopeFactory internally for short-lived DbContext scopes)
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.IOcppPersistence, HASmartCharge.Backend.DB.OcppRepository>();
