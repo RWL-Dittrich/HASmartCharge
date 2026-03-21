@@ -1,16 +1,25 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Globalization;
+using HASmartCharge.Application.Events;
 using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Application.Queries.Models;
 using HASmartCharge.Backend.OCPP.Models;
+using HASmartCharge.Domain.Events;
 using Microsoft.Extensions.Logging;
 
 namespace HASmartCharge.Backend.OCPP.Services;
 
 /// <summary>
-/// Service that tracks the status and measurands of all connected chargers
+/// Service that tracks the status and measurands of all connected chargers.
+/// Implements domain event handlers directly to keep OCPP model types out of this class.
 /// </summary>
-public class ChargerStatusTracker : IChargerReadModel
+public class ChargerStatusTracker : IChargerReadModel,
+    IDomainEventHandler<ChargerConnected>,
+    IDomainEventHandler<ChargerDisconnected>,
+    IDomainEventHandler<ChargerRegistered>,
+    IDomainEventHandler<ConnectorStatusUpdated>,
+    IDomainEventHandler<ChargingSessionStarted>,
+    IDomainEventHandler<ChargingSessionCompleted>
 {
     private readonly ConcurrentDictionary<string, ChargerStatus> _chargerStatuses = new();
     private readonly ILogger<ChargerStatusTracker> _logger;
@@ -74,14 +83,11 @@ public class ChargerStatusTracker : IChargerReadModel
 
     #endregion
 
-    #region Connection Management
+    #region Domain Event Handlers — Connection Management
 
-    /// <summary>
-    /// Mark a charger as connected
-    /// </summary>
-    public void OnChargerConnected(string chargePointId)
+    public Task HandleAsync(ChargerConnected evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id
         });
@@ -91,34 +97,30 @@ public class ChargerStatusTracker : IChargerReadModel
         status.DisconnectedAt = null;
         status.LastUpdated = DateTime.UtcNow;
 
-        _logger.LogInformation("Charger {ChargePointId} marked as connected", chargePointId);
+        _logger.LogInformation("Charger {ChargePointId} marked as connected", evt.ChargePointId);
+        return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Mark a charger as disconnected
-    /// </summary>
-    public void OnChargerDisconnected(string chargePointId)
+    public Task HandleAsync(ChargerDisconnected evt, CancellationToken ct = default)
     {
-        if (_chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status))
+        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out ChargerStatus? status))
         {
             status.IsConnected = false;
             status.DisconnectedAt = DateTime.UtcNow;
             status.LastUpdated = DateTime.UtcNow;
 
-            _logger.LogInformation("Charger {ChargePointId} marked as disconnected", chargePointId);
+            _logger.LogInformation("Charger {ChargePointId} marked as disconnected", evt.ChargePointId);
         }
+        return Task.CompletedTask;
     }
 
     #endregion
 
-    #region Boot Notification
+    #region Domain Event Handlers — Boot Notification
 
-    /// <summary>
-    /// Update charger info from BootNotification
-    /// </summary>
-    public void OnBootNotification(string chargePointId, BootNotificationRequest request)
+    public Task HandleAsync(ChargerRegistered evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
@@ -127,97 +129,84 @@ public class ChargerStatusTracker : IChargerReadModel
 
         status.Info = new ChargerInfo
         {
-            Vendor = request.ChargePointVendor,
-            Model = request.ChargePointModel,
-            SerialNumber = request.ChargePointSerialNumber,
-            FirmwareVersion = request.FirmwareVersion,
-            Iccid = request.Iccid,
-            Imsi = request.Imsi,
-            MeterType = request.MeterType,
-            MeterSerialNumber = request.MeterSerialNumber
+            Vendor = evt.Vendor,
+            Model = evt.Model,
+            SerialNumber = evt.SerialNumber,
+            FirmwareVersion = evt.FirmwareVersion
         };
 
         status.LastUpdated = DateTime.UtcNow;
 
         _logger.LogInformation("Updated charger info for {ChargePointId}: {Vendor} {Model}",
-            chargePointId, request.ChargePointVendor, request.ChargePointModel);
+            evt.ChargePointId, evt.Vendor, evt.Model);
+        return Task.CompletedTask;
     }
 
     #endregion
 
-    #region Status Notification
+    #region Domain Event Handlers — Status Notification
 
-    /// <summary>
-    /// Update connector status from StatusNotification
-    /// </summary>
-    public void OnStatusNotification(string chargePointId, StatusNotificationRequest request)
+    public Task HandleAsync(ConnectorStatusUpdated evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(request.ConnectorId, id => new ConnectorStatus
+        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
         {
             ConnectorId = id
         });
 
-        connectorStatus.Status = request.Status;
-        connectorStatus.ErrorCode = request.ErrorCode;
-        connectorStatus.Info = request.Info;
-        connectorStatus.VendorId = request.VendorId;
-        connectorStatus.VendorErrorCode = request.VendorErrorCode;
+        connectorStatus.Status = evt.Status;
+        connectorStatus.ErrorCode = evt.ErrorCode ?? "NoError";
         connectorStatus.LastStatusUpdate = DateTime.UtcNow;
 
         status.LastUpdated = DateTime.UtcNow;
 
         _logger.LogDebug("Updated status for {ChargePointId} connector {ConnectorId}: {Status}",
-            chargePointId, request.ConnectorId, request.Status);
+            evt.ChargePointId, evt.ConnectorId, evt.Status);
+        return Task.CompletedTask;
     }
 
     #endregion
 
-    #region Transaction Management
+    #region Domain Event Handlers — Transaction Management
 
-    /// <summary>
-    /// Update connector status when transaction starts
-    /// </summary>
-    public void OnStartTransaction(string chargePointId, StartTransactionRequest request, int transactionId)
+    public Task HandleAsync(ChargingSessionStarted evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(request.ConnectorId, id => new ConnectorStatus
+        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
         {
             ConnectorId = id
         });
 
-        connectorStatus.ActiveTransactionId = transactionId;
-        connectorStatus.TransactionStartTime = request.Timestamp;
-        connectorStatus.IdTag = request.IdTag;
+        connectorStatus.ActiveTransactionId = evt.TransactionId;
+        connectorStatus.TransactionStartTime = evt.OccurredAt.UtcDateTime;
+        connectorStatus.IdTag = evt.IdTag;
 
         status.LastUpdated = DateTime.UtcNow;
 
         _logger.LogInformation("Transaction {TransactionId} started on {ChargePointId} connector {ConnectorId}",
-            transactionId, chargePointId, request.ConnectorId);
+            evt.TransactionId, evt.ChargePointId, evt.ConnectorId);
+        return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Update connector status when transaction stops
-    /// </summary>
-    public void OnStopTransaction(string chargePointId, StopTransactionRequest request)
+    public Task HandleAsync(ChargingSessionCompleted evt, CancellationToken ct = default)
     {
-        if (_chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status))
+        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out ChargerStatus? status))
         {
             // Find the connector with this transaction ID
             ConnectorStatus? connector = status.Connectors.Values
-                .FirstOrDefault(c => c.ActiveTransactionId == request.TransactionId);
+                .FirstOrDefault(c => c.ActiveTransactionId == evt.TransactionId);
 
             if (connector != null)
             {
@@ -228,17 +217,19 @@ public class ChargerStatusTracker : IChargerReadModel
                 status.LastUpdated = DateTime.UtcNow;
 
                 _logger.LogInformation("Transaction {TransactionId} stopped on {ChargePointId} connector {ConnectorId}",
-                    request.TransactionId, chargePointId, connector.ConnectorId);
+                    evt.TransactionId, evt.ChargePointId, connector.ConnectorId);
             }
         }
+        return Task.CompletedTask;
     }
 
     #endregion
 
-    #region Meter Values
+    #region Meter Values (still called directly from ChargePointSession — not event-driven yet)
 
     /// <summary>
-    /// Update measurands from MeterValues
+    /// Update measurands from MeterValues.
+    /// Called directly from ChargePointSession.HandleMeterValuesAsync.
     /// </summary>
     public void OnMeterValues(string chargePointId, MeterValuesRequest request)
     {
@@ -638,4 +629,3 @@ public class ChargerStatusTracker : IChargerReadModel
 
     #endregion
 }
-

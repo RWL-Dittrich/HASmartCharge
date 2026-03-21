@@ -655,7 +655,7 @@ Domain → (nothing)
   - Both repositories registered in DI in `Program.cs` and wired into application command handlers.
 
 ### TASK-026 — Split and re-home `ChargerStatusTracker` once mutations are event-driven
-- **Status:** TODO (DEFERRED)
+- **Status:** DONE
 - **Priority:** P2
 - **Depends on:** TASK-022
 - **Why:** The tracker acts like a shared read model, not an OCPP-only concern. However, it currently has two roles: (1) read model implementing `IChargerReadModel` (already abstracted) and (2) mutation target called directly by OCPP protocol handlers via `OnFoo()` methods. Moving it before replacing direct mutations with domain events would just shift the coupling. Once TASK-022 converts mutations to event handlers, the tracker becomes a pure event subscriber + read model and can be cleanly relocated.
@@ -670,6 +670,13 @@ Domain → (nothing)
   - Dependency flow remains sane and the solution builds.
 - **Suggested agent brief:**
   - "Once direct OnFoo() mutations have been replaced by event handlers, relocate ChargerStatusTracker to the application layer as a pure read-model implementation."
+- **Completed work (Phase 6):**
+  - `ChargerStatusTracker` now directly implements `IDomainEventHandler<T>` for six domain events: `ChargerConnected`, `ChargerDisconnected`, `ChargerRegistered`, `ConnectorStatusUpdated`, `ChargingSessionStarted`, `ChargingSessionCompleted`.
+  - Removed `OnChargerConnected`, `OnChargerDisconnected`, `OnBootNotification`, `OnStatusNotification`, `OnStartTransaction`, `OnStopTransaction` methods — replaced by `HandleAsync` overloads reading directly from domain event properties.
+  - `OnMeterValues` retained — still called directly from `ChargePointSession.HandleMeterValuesAsync` (not event-driven yet).
+  - Deleted `TrackerEventHandlers.cs` entirely — the intermediary wrapper classes that reconstructed OCPP request objects from domain events are no longer needed.
+  - Updated `Program.cs` to register the tracker directly via `dispatcher.Register<TEvent>(tracker)` instead of constructing six separate wrapper handler instances. Removed the `using HASmartCharge.Backend.OCPP.Services.EventHandlers` directive.
+  - Solution builds with 0 errors.
 
 ### TASK-027 — Review and rename misleading `Domain` usage inside the OCPP project
 - **Status:** DONE

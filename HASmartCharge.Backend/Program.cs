@@ -1,5 +1,6 @@
 using HASmartCharge.Application.Commands;
 using HASmartCharge.Application.Events;
+using HASmartCharge.Domain.Events;
 using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Backend.BackgroundServices;
 using HASmartCharge.Backend.Configuration;
@@ -10,7 +11,6 @@ using HASmartCharge.Backend.Services.Auth;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
 using HASmartCharge.Backend.OCPP.Services;
-using HASmartCharge.Backend.OCPP.Services.EventHandlers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Scalar.AspNetCore;
@@ -97,12 +97,12 @@ app.MapControllers();
 {
     var dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
     var tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
-    dispatcher.Register(new ChargerConnectedHandler(tracker));
-    dispatcher.Register(new ChargerDisconnectedHandler(tracker));
-    dispatcher.Register(new ChargerRegisteredHandler(tracker));
-    dispatcher.Register(new ChargingSessionStartedHandler(tracker));
-    dispatcher.Register(new ChargingSessionCompletedHandler(tracker));
-    dispatcher.Register(new ConnectorStatusUpdatedHandler(tracker));
+    dispatcher.Register<ChargerConnected>(tracker);
+    dispatcher.Register<ChargerDisconnected>(tracker);
+    dispatcher.Register<ChargerRegistered>(tracker);
+    dispatcher.Register<ChargingSessionStarted>(tracker);
+    dispatcher.Register<ChargingSessionCompleted>(tracker);
+    dispatcher.Register<ConnectorStatusUpdated>(tracker);
 }
 
 {
