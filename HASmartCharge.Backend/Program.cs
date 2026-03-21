@@ -75,8 +75,6 @@ builder.Services.AddSingleton<BeginChargingSessionHandler>();
 builder.Services.AddSingleton<CompleteChargingSessionHandler>();
 builder.Services.AddSingleton<UpdateConnectorStatusHandler>();
 
-// OCPP persistence (legacy — kept for OcppRepository which may still be referenced elsewhere)
-builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.IOcppPersistence, HASmartCharge.Backend.DB.OcppRepository>();
 
 WebApplication app = builder.Build();
 ILogger startupLogger = app.Logger;

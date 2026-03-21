@@ -611,7 +611,7 @@ Domain → (nothing)
 > **Note:** TASK-024 (break DB→OCPP dependency) should be done before or alongside TASK-025 (implement new repos).
 
 ### TASK-024 — Break `Backend.DB → Backend.OCPP` dependency
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-013
 - **Why:** `Backend.DB` currently references `Backend.OCPP` solely to implement `IOcppPersistence` and consume its OCPP-branded persistence DTOs (`PersistedCharger`, `OcppBootInfo`, etc.). This makes the database project structurally dependent on the protocol layer. Once application-layer repository interfaces exist (TASK-013), the DB project should implement those instead, removing the reverse dependency.
@@ -628,9 +628,16 @@ Domain → (nothing)
   - The solution builds and runtime behavior is unchanged.
 - **Suggested agent brief:**
   - "Break the Backend.DB → Backend.OCPP dependency by making the DB project implement application-layer repository interfaces instead of IOcppPersistence. Remove the OCPP project reference from Backend.DB."
+- **Completed work (Phase 6):**
+  - Deleted `IOcppPersistence.cs` (interface + `PersistedCharger`/`OcppBootInfo`/`PersistedConnector` DTOs) from `Backend.OCPP`.
+  - Deleted `OcppRepository.cs` from `Backend.DB` (superseded by `EfChargerRepository` + `EfChargingSessionRepository`).
+  - Removed `SeedFromDatabase(IEnumerable<PersistedCharger>)` from `ChargerStatusTracker` (unused; `SeedFromDomainChargers` is the active method).
+  - Removed `<ProjectReference>` to `Backend.OCPP` from `HASmartCharge.Backend.DB.csproj`.
+  - Removed legacy `IOcppPersistence`/`OcppRepository` DI registration from `Program.cs`.
+  - Solution builds with 0 errors.
 
 ### TASK-025 — Introduce database-side implementations for new repositories
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-013, TASK-024
 - **Why:** The new application abstractions need backing implementations.
@@ -642,6 +649,10 @@ Domain → (nothing)
   - The database project satisfies the new repository interfaces.
 - **Suggested agent brief:**
   - "Implement the new application repository interfaces in the database project, replacing the architectural role of `IOcppPersistence` without unnecessary schema churn."
+- **Completed work (Phase 5):**
+  - `EfChargerRepository.cs` implementing `IChargerRepository` added to `Backend.DB`.
+  - `EfChargingSessionRepository.cs` implementing `IChargingSessionRepository` added to `Backend.DB`.
+  - Both repositories registered in DI in `Program.cs` and wired into application command handlers.
 
 ### TASK-026 — Split and re-home `ChargerStatusTracker` once mutations are event-driven
 - **Status:** TODO (DEFERRED)
