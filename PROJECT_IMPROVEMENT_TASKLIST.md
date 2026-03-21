@@ -32,8 +32,8 @@ Suggested status values:
 2. ~~Read model abstraction and read-controller decoupling~~ — **DONE**
 3. ~~Outbound command abstraction (complete controller decoupling)~~ — **DONE**
 4. ~~Domain model creation (entities, events, repository interfaces, command handlers, event dispatch)~~ — **DONE**
-5. OCPP god-object breakup (ChargePointSession refactor)
-6. Persistence dependency cleanup and project naming
+5. ~~OCPP god-object breakup (ChargePointSession refactor)~~ — **DONE**
+6. ~~Persistence dependency cleanup and project naming~~ — **DONE**
 7. Home Assistant isolation
 8. Deployment hardening
 9. Tests and concurrency safety
@@ -695,7 +695,7 @@ Domain → (nothing)
   - Solution builds with 0 errors.
 
 ### TASK-028 — Evaluate renaming projects to adapter-oriented names
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P2
 - **Why:** Long-term architecture would be clearer if OCPP/DB/HA components were framed as adapters.
 - **Scope:**
@@ -703,8 +703,8 @@ Domain → (nothing)
   - If chosen, make changes incrementally.
 - **Done when:**
   - A clear decision is documented, or the rename is completed safely.
-- **Suggested agent brief:**
-  - “Evaluate whether the infrastructure projects should be renamed to adapter-style names and either document the decision or perform the rename safely.”
+- **Decision (Phase 6):**
+  - **Deferred — not worth the churn at this stage.** Project renames require updating `.slnx`, all `<ProjectReference>` entries, root namespace declarations, namespaces across hundreds of files, and any external tooling configuration. The architectural intent is already communicated by the namespace changes done in TASK-027 (`OCPP.Domain` → `OCPP.Sessions`) and the layer boundaries enforced by project references. Renaming projects to e.g. `Adapters.OCPP` / `Adapters.Database` would be a cosmetic change with high merge-conflict risk. Revisit if the project grows significantly or a new protocol adapter is added.
 
 ---
 
