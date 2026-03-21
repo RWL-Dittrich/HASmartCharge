@@ -1,3 +1,4 @@
+using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Backend.BackgroundServices;
 using HASmartCharge.Backend.Configuration;
 using HASmartCharge.Backend.DB;
@@ -8,6 +9,7 @@ using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
 using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Scalar.AspNetCore;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -43,6 +45,8 @@ builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 // Register OCPP services (new layered architecture)
 builder.Services.AddSingleton<WebSocketMessageService>();
 builder.Services.AddSingleton<ChargerStatusTracker>();
+builder.Services.AddSingleton<IChargerReadModel>(serviceProvider =>
+    serviceProvider.GetRequiredService<ChargerStatusTracker>());
 
 // New architecture components
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Domain.ISessionManager, HASmartCharge.Backend.OCPP.Domain.SessionManager>();
@@ -57,6 +61,7 @@ builder.Services.AddSingleton<ChargerConfigurationService>();
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.IOcppPersistence, HASmartCharge.Backend.DB.OcppRepository>();
 
 WebApplication app = builder.Build();
+ILogger startupLogger = app.Logger;
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -97,11 +102,11 @@ app.MapControllers();
     {
         IHomeAssistantApiService apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
         List<HaEntity> devices = await apiService.GetDevicesAsync();
-        Console.WriteLine($"Home Assistant devices found: {devices.Count}");
+        startupLogger.LogInformation("Home Assistant devices found: {DeviceCount}", devices.Count);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Warning: Could not connect to Home Assistant: {ex.Message}");
+        startupLogger.LogWarning(ex, "Could not connect to Home Assistant during startup initialization.");
     }
 }
 

@@ -1,5 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Globalization;
+using HASmartCharge.Application.Interfaces;
+using HASmartCharge.Application.Queries.Models;
 using HASmartCharge.Backend.OCPP.Models;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +10,7 @@ namespace HASmartCharge.Backend.OCPP.Services;
 /// <summary>
 /// Service that tracks the status and measurands of all connected chargers
 /// </summary>
-public class ChargerStatusTracker
+public class ChargerStatusTracker : IChargerReadModel
 {
     private readonly ConcurrentDictionary<string, ChargerStatus> _chargerStatuses = new();
     private readonly ILogger<ChargerStatusTracker> _logger;
@@ -380,6 +382,48 @@ public class ChargerStatusTracker
     #region Query Methods
 
     /// <summary>
+    /// Returns immutable charger snapshots for the API/application read model.
+    /// </summary>
+    public IEnumerable<ChargerSnapshot> GetChargers(bool? connected = null)
+    {
+        IEnumerable<ChargerStatus> statuses = connected switch
+        {
+            true => GetConnectedChargers(),
+            false => GetAllChargerStatuses().Where(status => !status.IsConnected),
+            null => GetAllChargerStatuses()
+        };
+
+        return statuses.Select(CreateChargerSnapshot);
+    }
+
+    /// <summary>
+    /// Returns a single immutable charger snapshot for the API/application read model.
+    /// </summary>
+    public ChargerSnapshot? GetCharger(string chargerId)
+    {
+        return GetChargerStatus(chargerId) is { } status
+            ? CreateChargerSnapshot(status)
+            : null;
+    }
+
+    /// <summary>
+    /// Returns active charging-session snapshots for the API/application read model.
+    /// </summary>
+    public IEnumerable<ActiveChargingSessionSnapshot> GetActiveChargingSessions(string? chargerId = null)
+    {
+        IEnumerable<ChargerStatus> statuses = string.IsNullOrWhiteSpace(chargerId)
+            ? GetAllChargerStatuses()
+            : _chargerStatuses.TryGetValue(chargerId, out ChargerStatus? status)
+                ? new[] { status }
+                : Enumerable.Empty<ChargerStatus>();
+
+        return statuses.SelectMany(status => status.Connectors.Values
+            .Where(connector => connector.ActiveTransactionId.HasValue)
+            .OrderBy(connector => connector.ConnectorId)
+            .Select(connector => CreateActiveChargingSessionSnapshot(status, connector)));
+    }
+
+    /// <summary>
     /// Get status of a specific charger
     /// </summary>
     public ChargerStatus? GetChargerStatus(string chargePointId)
@@ -467,6 +511,129 @@ public class ChargerStatusTracker
         {
             _logger.LogInformation("Removed charger {ChargePointId} from status tracking", chargePointId);
         }
+    }
+
+    private ChargerSnapshot CreateChargerSnapshot(ChargerStatus status)
+    {
+        List<ConnectorSnapshot> connectors = status.Connectors.Values
+            .OrderBy(connector => connector.ConnectorId)
+            .Select(connector => CreateConnectorSnapshot(status, connector))
+            .ToList();
+
+        return new ChargerSnapshot
+        {
+            ChargerId = status.ChargePointId,
+            LastUpdated = status.LastUpdated,
+            IsConnected = status.IsConnected,
+            ConnectedAt = status.ConnectedAt,
+            DisconnectedAt = status.DisconnectedAt,
+            Info = CreateChargerInfoSnapshot(status.Info),
+            Connectors = connectors
+        };
+    }
+
+    private static ChargerInfoSnapshot? CreateChargerInfoSnapshot(ChargerInfo? info)
+    {
+        return info is null
+            ? null
+            : new ChargerInfoSnapshot
+            {
+                Vendor = info.Vendor,
+                Model = info.Model,
+                SerialNumber = info.SerialNumber,
+                FirmwareVersion = info.FirmwareVersion,
+                Iccid = info.Iccid,
+                Imsi = info.Imsi,
+                MeterType = info.MeterType,
+                MeterSerialNumber = info.MeterSerialNumber
+            };
+    }
+
+    private ConnectorSnapshot CreateConnectorSnapshot(ChargerStatus status, ConnectorStatus connector)
+    {
+        status.Measurands.TryGetValue(connector.ConnectorId, out ConnectorMeasurands? measurands);
+
+        return new ConnectorSnapshot
+        {
+            ConnectorId = connector.ConnectorId,
+            Status = connector.Status,
+            ErrorCode = connector.ErrorCode,
+            Info = connector.Info,
+            VendorId = connector.VendorId,
+            VendorErrorCode = connector.VendorErrorCode,
+            LastStatusUpdate = connector.LastStatusUpdate,
+            ActiveSessionId = connector.ActiveTransactionId,
+            SessionStartedAt = connector.TransactionStartTime,
+            AuthorizationTag = connector.IdTag,
+            Measurements = CreateConnectorMeasurementsSnapshot(measurands)
+        };
+    }
+
+    private ActiveChargingSessionSnapshot CreateActiveChargingSessionSnapshot(ChargerStatus status, ConnectorStatus connector)
+    {
+        status.Measurands.TryGetValue(connector.ConnectorId, out ConnectorMeasurands? measurands);
+
+        return new ActiveChargingSessionSnapshot
+        {
+            ChargerId = status.ChargePointId,
+            ConnectorId = connector.ConnectorId,
+            SessionId = connector.ActiveTransactionId!.Value,
+            AuthorizationTag = connector.IdTag,
+            StartedAt = connector.TransactionStartTime,
+            ConnectorStatus = connector.Status,
+            Measurements = CreateConnectorMeasurementsSnapshot(measurands)
+        };
+    }
+
+    private static ConnectorMeasurementsSnapshot? CreateConnectorMeasurementsSnapshot(ConnectorMeasurands? measurands)
+    {
+        return measurands is null
+            ? null
+            : new ConnectorMeasurementsSnapshot
+            {
+                ConnectorId = measurands.ConnectorId,
+                LastUpdated = measurands.LastUpdated,
+                ImportedEnergy = CreateMeasurementValueSnapshot(measurands.EnergyActiveImportRegister),
+                ImportedReactiveEnergy = CreateMeasurementValueSnapshot(measurands.EnergyReactiveImportRegister),
+                ExportedEnergy = CreateMeasurementValueSnapshot(measurands.EnergyActiveExportRegister),
+                ExportedReactiveEnergy = CreateMeasurementValueSnapshot(measurands.EnergyReactiveExportRegister),
+                ImportedPower = CreateMeasurementValueSnapshot(measurands.PowerActiveImport),
+                ImportedReactivePower = CreateMeasurementValueSnapshot(measurands.PowerReactiveImport),
+                OfferedPower = CreateMeasurementValueSnapshot(measurands.PowerOffered),
+                VoltageL1 = CreateMeasurementValueSnapshot(measurands.VoltageL1),
+                VoltageL2 = CreateMeasurementValueSnapshot(measurands.VoltageL2),
+                VoltageL3 = CreateMeasurementValueSnapshot(measurands.VoltageL3),
+                VoltageL1N = CreateMeasurementValueSnapshot(measurands.VoltageL1N),
+                VoltageL2N = CreateMeasurementValueSnapshot(measurands.VoltageL2N),
+                VoltageL3N = CreateMeasurementValueSnapshot(measurands.VoltageL3N),
+                ImportedCurrentL1 = CreateMeasurementValueSnapshot(measurands.CurrentImportL1),
+                ImportedCurrentL2 = CreateMeasurementValueSnapshot(measurands.CurrentImportL2),
+                ImportedCurrentL3 = CreateMeasurementValueSnapshot(measurands.CurrentImportL3),
+                ExportedCurrentL1 = CreateMeasurementValueSnapshot(measurands.CurrentExportL1),
+                ExportedCurrentL2 = CreateMeasurementValueSnapshot(measurands.CurrentExportL2),
+                ExportedCurrentL3 = CreateMeasurementValueSnapshot(measurands.CurrentExportL3),
+                OfferedCurrent = CreateMeasurementValueSnapshot(measurands.CurrentOffered),
+                Temperature = CreateMeasurementValueSnapshot(measurands.Temperature),
+                StateOfCharge = CreateMeasurementValueSnapshot(measurands.SoC),
+                Frequency = CreateMeasurementValueSnapshot(measurands.Frequency),
+                RevolutionsPerMinute = CreateMeasurementValueSnapshot(measurands.Rpm)
+            };
+    }
+
+    private static MeasurementValueSnapshot? CreateMeasurementValueSnapshot(MeasurandValue? value)
+    {
+        return value is null
+            ? null
+            : new MeasurementValueSnapshot
+            {
+                Value = value.Value,
+                Unit = value.Unit,
+                Context = value.Context,
+                Format = value.Format,
+                Location = value.Location,
+                Phase = value.Phase,
+                Timestamp = value.Timestamp
+            };
     }
 
     #endregion

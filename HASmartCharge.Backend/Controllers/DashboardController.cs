@@ -1,5 +1,5 @@
-using HASmartCharge.Backend.OCPP.Models;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Application.Interfaces;
+using HASmartCharge.Application.Queries.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;
@@ -13,11 +13,24 @@ namespace HASmartCharge.Backend.Controllers;
 [Produces("application/json")]
 public class DashboardController : ControllerBase
 {
-    private readonly ChargerStatusTracker _statusTracker;
+    private static readonly string[] KnownConnectorStatuses =
+    [
+        "Available",
+        "Preparing",
+        "Charging",
+        "SuspendedEVSE",
+        "SuspendedEV",
+        "Finishing",
+        "Reserved",
+        "Unavailable",
+        "Faulted"
+    ];
 
-    public DashboardController(ChargerStatusTracker statusTracker)
+    private readonly IChargerReadModel _chargerReadModel;
+
+    public DashboardController(IChargerReadModel chargerReadModel)
     {
-        _statusTracker = statusTracker;
+        _chargerReadModel = chargerReadModel;
     }
 
     /// <summary>
@@ -29,50 +42,40 @@ public class DashboardController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetSummary()
     {
-        List<ChargerStatus> all = _statusTracker.GetAllChargerStatuses().ToList();
+        List<ChargerSnapshot> all = _chargerReadModel.GetChargers().ToList();
 
         int totalChargers = all.Count;
         int onlineChargers = all.Count(s => s.IsConnected);
 
         // Flatten every connector across all chargers
-        List<ConnectorStatus> allConnectors = all
-            .SelectMany(s => s.Connectors.Values)
+        List<ConnectorSnapshot> allConnectors = all
+            .SelectMany(s => s.Connectors)
             .ToList();
 
         // Count connectors by OCPP status
-        Dictionary<string, int> connectorsByStatus = new()
-        {
-            ["Available"] = 0,
-            ["Preparing"] = 0,
-            ["Charging"] = 0,
-            ["SuspendedEVSE"] = 0,
-            ["SuspendedEV"] = 0,
-            ["Finishing"] = 0,
-            ["Reserved"] = 0,
-            ["Unavailable"] = 0,
-            ["Faulted"] = 0,
-            ["Unknown"] = 0,
-        };
+        Dictionary<string, int> connectorsByStatus = KnownConnectorStatuses
+            .Concat(["Unknown"])
+            .ToDictionary(status => status, _ => 0);
 
-        foreach (ConnectorStatus c in allConnectors)
+        foreach (ConnectorSnapshot c in allConnectors)
         {
             string key = connectorsByStatus.ContainsKey(c.Status) ? c.Status : "Unknown";
             connectorsByStatus[key]++;
         }
 
         // Active transactions with live measurands
-        var activeTransactions = _statusTracker.GetAllActiveTransactions()
-            .OrderByDescending(t => t.Connector.TransactionStartTime)
+        var activeTransactions = _chargerReadModel.GetActiveChargingSessions()
+            .OrderByDescending(t => t.StartedAt)
             .Select(t => new
             {
-                chargePointId        = t.ChargePointId,
-                connectorId          = t.Connector.ConnectorId,
-                transactionId        = t.Connector.ActiveTransactionId!.Value,
-                idTag                = t.Connector.IdTag,
-                startTime            = t.Connector.TransactionStartTime,
-                connectorStatus      = t.Connector.Status,
-                energyActiveImportWh = t.Measurands?.EnergyActiveImportRegister,
-                powerActiveImport    = t.Measurands?.PowerActiveImport,
+                chargePointId = t.ChargerId,
+                connectorId = t.ConnectorId,
+                transactionId = t.SessionId,
+                idTag = t.AuthorizationTag,
+                startTime = t.StartedAt,
+                connectorStatus = t.ConnectorStatus,
+                energyActiveImportWh = MapMeasurementValue(t.Measurements?.ImportedEnergy),
+                powerActiveImport = MapMeasurementValue(t.Measurements?.ImportedPower),
             })
             .ToList();
 
@@ -80,21 +83,23 @@ public class DashboardController : ControllerBase
         decimal totalPowerDrawKw = 0;
         decimal totalEnergyDeliveredKwh = 0;
 
-        foreach (ChargerStatus charger in all)
+        foreach (ChargerSnapshot charger in all)
         {
-            foreach (ConnectorMeasurands measurands in charger.Measurands.Values)
+            foreach (ConnectorMeasurementsSnapshot measurements in charger.Connectors
+                         .Select(connector => connector.Measurements)
+                         .OfType<ConnectorMeasurementsSnapshot>())
             {
-                if (measurands.PowerActiveImport?.AsDecimal() is { } power)
+                if (measurements.ImportedPower?.AsDecimal() is { } power)
                 {
-                    string unit = measurands.PowerActiveImport.Unit ?? "W";
+                    string unit = measurements.ImportedPower.Unit ?? "W";
                     totalPowerDrawKw += unit.Equals("kW", StringComparison.OrdinalIgnoreCase)
                         ? power
                         : power / 1000m;
                 }
 
-                if (measurands.EnergyActiveImportRegister?.AsDecimal() is { } energy)
+                if (measurements.ImportedEnergy?.AsDecimal() is { } energy)
                 {
-                    string unit = measurands.EnergyActiveImportRegister.Unit ?? "Wh";
+                    string unit = measurements.ImportedEnergy.Unit ?? "Wh";
                     totalEnergyDeliveredKwh += unit.Equals("kWh", StringComparison.OrdinalIgnoreCase)
                         ? energy
                         : energy / 1000m;
@@ -114,5 +119,21 @@ public class DashboardController : ControllerBase
             totalPowerDrawKw        = Math.Round(totalPowerDrawKw, 2),
             totalEnergyDeliveredKwh = Math.Round(totalEnergyDeliveredKwh, 2),
         });
+    }
+
+    private static object? MapMeasurementValue(MeasurementValueSnapshot? value)
+    {
+        return value is null
+            ? null
+            : new
+            {
+                value = value.Value,
+                unit = value.Unit,
+                context = value.Context,
+                format = value.Format,
+                location = value.Location,
+                phase = value.Phase,
+                timestamp = value.Timestamp
+            };
     }
 }
