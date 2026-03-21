@@ -55,6 +55,7 @@ builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConn
 
 // Command sender (uses new architecture)
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender, HASmartCharge.Backend.OCPP.Services.SessionCommandSender>();
+builder.Services.AddSingleton<IChargerGateway, OcppChargerGateway>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
 
 // OCPP persistence (uses IServiceScopeFactory internally for short-lived DbContext scopes)

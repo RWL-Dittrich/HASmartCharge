@@ -1,6 +1,5 @@
-﻿using HASmartCharge.Backend.Models.Charger;
-using HASmartCharge.Backend.OCPP.Domain;
-using HASmartCharge.Backend.OCPP.Models;
+using HASmartCharge.Application.Interfaces;
+using HASmartCharge.Backend.Models.Charger;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;
@@ -21,14 +20,14 @@ namespace HASmartCharge.Backend.Controllers;
 public class ChargerCommandsController : ControllerBase
 {
     private readonly ILogger<ChargerCommandsController> _logger;
-    private readonly ISessionManager _sessionManager;
+    private readonly IChargerGateway _chargerGateway;
 
     public ChargerCommandsController(
         ILogger<ChargerCommandsController> logger,
-        ISessionManager sessionManager)
+        IChargerGateway chargerGateway)
     {
         _logger = logger;
-        _sessionManager = sessionManager;
+        _chargerGateway = chargerGateway;
     }
 
     // -------------------------------------------------------------------------
@@ -39,7 +38,7 @@ public class ChargerCommandsController : ControllerBase
     /// Reset the charger.
     /// </summary>
     /// <param name="chargerId">Charge point ID</param>
-    /// <param name="request">Reset type — <c>Hard</c> or <c>Soft</c> (default: Soft)</param>
+    /// <param name="request">Reset type — <c>Hard</c> or <c>Soft</c> (default: Hard)</param>
     [HttpPost("reset")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -48,18 +47,16 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Reset(
         [FromRoute] string chargerId,
-        [FromBody] ResetRequest request)
+        [FromBody] ResetChargerRequest request)
     {
         if (request.Type != "Hard" && request.Type != "Soft")
             return BadRequest(new { error = "Type must be 'Hard' or 'Soft'" });
 
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
-
         _logger.LogInformation("Sending Reset ({Type}) to {ChargerId}", request.Type, chargerId);
 
-        OcppCommandResult result = await session.SendCommandAsync("Reset", new ResetRequest { Type = request.Type });
-        return OcppResultToActionResult(result, new { chargerId, type = request.Type });
+        bool hardReset = request.Type == "Hard";
+        ChargerCommandResult result = await _chargerGateway.ResetChargerAsync(chargerId, hardReset);
+        return GatewayResultToActionResult(result, new { chargerId, type = request.Type });
     }
 
     /// <summary>
@@ -72,13 +69,10 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> ClearCache([FromRoute] string chargerId)
     {
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
-
         _logger.LogInformation("Sending ClearCache to {ChargerId}", chargerId);
 
-        OcppCommandResult result = await session.SendCommandAsync("ClearCache", new { });
-        return OcppResultToActionResult(result, new { chargerId });
+        ChargerCommandResult result = await _chargerGateway.ClearCacheAsync(chargerId);
+        return GatewayResultToActionResult(result, new { chargerId });
     }
 
     /// <summary>
@@ -95,25 +89,17 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> TriggerMessage(
         [FromRoute] string chargerId,
-        [FromBody] TriggerMessageRequest request)
+        [FromBody] TriggerMessageBodyRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.RequestedMessage))
             return BadRequest(new { error = "requestedMessage is required" });
-
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
 
         _logger.LogInformation(
             "Sending TriggerMessage ({RequestedMessage}, connector {ConnectorId}) to {ChargerId}",
             request.RequestedMessage, request.ConnectorId, chargerId);
 
-        OcppCommandResult result = await session.SendCommandAsync("TriggerMessage", new TriggerMessageRequest
-        {
-            RequestedMessage = request.RequestedMessage,
-            ConnectorId      = request.ConnectorId
-        });
-
-        return OcppResultToActionResult(result, new { chargerId, requestedMessage = request.RequestedMessage, connectorId = request.ConnectorId });
+        ChargerCommandResult result = await _chargerGateway.TriggerMessageAsync(chargerId, request.RequestedMessage, request.ConnectorId);
+        return GatewayResultToActionResult(result, new { chargerId, requestedMessage = request.RequestedMessage, connectorId = request.ConnectorId });
     }
 
     /// <summary>
@@ -127,26 +113,15 @@ public class ChargerCommandsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetDiagnostics(
         [FromRoute] string chargerId,
-        [FromBody] GetDiagnosticsRequest request)
+        [FromBody] GetDiagnosticsBodyRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Location))
             return BadRequest(new { error = "location is required" });
 
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
-
         _logger.LogInformation("Sending GetDiagnostics to {ChargerId}, location={Location}", chargerId, request.Location);
 
-        OcppCommandResult result = await session.SendCommandAsync("GetDiagnostics", new GetDiagnosticsRequest
-        {
-            Location      = request.Location,
-            Retries       = request.Retries,
-            RetryInterval = request.RetryInterval,
-            StartTime     = request.StartTime,
-            StopTime      = request.StopTime
-        });
-
-        return OcppResultToActionResult(result, new { chargerId, location = request.Location });
+        ChargerCommandResult result = await _chargerGateway.GetDiagnosticsAsync(chargerId, request.Location);
+        return GatewayResultToActionResult(result, new { chargerId, location = request.Location });
     }
 
     // -------------------------------------------------------------------------
@@ -170,17 +145,13 @@ public class ChargerCommandsController : ControllerBase
         if (request.Type != "Operative" && request.Type != "Inoperative")
             return BadRequest(new { error = "Type must be 'Operative' or 'Inoperative'" });
 
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
-
         _logger.LogInformation(
             "Setting availability of {ChargerId} connector {ConnectorId} to {Type}",
             chargerId, connectorId, request.Type);
 
         bool available = request.Type == "Operative";
-        OcppCommandResult result = await session.SetAvailabilityAsync(connectorId, available);
-
-        return OcppResultToActionResult(result, new { chargerId, connectorId, type = request.Type });
+        ChargerCommandResult result = await _chargerGateway.SetConnectorAvailabilityAsync(chargerId, connectorId, available);
+        return GatewayResultToActionResult(result, new { chargerId, connectorId, type = request.Type });
     }
 
     /// <summary>
@@ -195,17 +166,10 @@ public class ChargerCommandsController : ControllerBase
         [FromRoute] string chargerId,
         [FromRoute] int connectorId)
     {
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
-
         _logger.LogInformation("Sending UnlockConnector to {ChargerId} connector {ConnectorId}", chargerId, connectorId);
 
-        OcppCommandResult result = await session.SendCommandAsync("UnlockConnector", new UnlockConnectorRequest
-        {
-            ConnectorId = connectorId
-        });
-
-        return OcppResultToActionResult(result, new { chargerId, connectorId });
+        ChargerCommandResult result = await _chargerGateway.UnlockConnectorAsync(chargerId, connectorId);
+        return GatewayResultToActionResult(result, new { chargerId, connectorId });
     }
 
     /// <summary>
@@ -220,21 +184,17 @@ public class ChargerCommandsController : ControllerBase
     public async Task<IActionResult> StartTransaction(
         [FromRoute] string chargerId,
         [FromRoute] int connectorId,
-        [FromBody] RemoteStartTransactionRequest request)
+        [FromBody] RemoteStartRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.IdTag))
             return BadRequest(new { error = "idTag is required" });
-
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
 
         _logger.LogInformation(
             "Sending RemoteStartTransaction to {ChargerId} connector {ConnectorId}, idTag={IdTag}",
             chargerId, connectorId, request.IdTag);
 
-        OcppCommandResult result = await session.RemoteStartTransactionAsync(connectorId, request.IdTag);
-
-        return OcppResultToActionResult(result, new { chargerId, connectorId, idTag = request.IdTag });
+        ChargerCommandResult result = await _chargerGateway.StartTransactionAsync(chargerId, connectorId, request.IdTag);
+        return GatewayResultToActionResult(result, new { chargerId, connectorId, idTag = request.IdTag });
     }
 
     /// <summary>
@@ -250,16 +210,12 @@ public class ChargerCommandsController : ControllerBase
         [FromRoute] int connectorId,
         [FromRoute] int transactionId)
     {
-        IChargePointSession? session = GetSession(chargerId, out IActionResult? error);
-        if (session == null) return error!;
-
         _logger.LogInformation(
             "Sending RemoteStopTransaction to {ChargerId} connector {ConnectorId}, transactionId={TransactionId}",
             chargerId, connectorId, transactionId);
 
-        OcppCommandResult result = await session.RemoteStopTransactionAsync(transactionId);
-
-        return OcppResultToActionResult(result, new { chargerId, connectorId, transactionId });
+        ChargerCommandResult result = await _chargerGateway.StopTransactionAsync(chargerId, transactionId);
+        return GatewayResultToActionResult(result, new { chargerId, connectorId, transactionId });
     }
 
     // -------------------------------------------------------------------------
@@ -267,48 +223,24 @@ public class ChargerCommandsController : ControllerBase
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Resolves the session for <paramref name="chargerId"/>.
-    /// Returns <c>null</c> and sets <paramref name="error"/> to a 404 or 503
-    /// result when the session cannot be resolved.
+    /// Maps a <see cref="ChargerCommandResult"/> to an <see cref="IActionResult"/>.
     /// </summary>
-    private IChargePointSession? GetSession(string chargerId, out IActionResult? error)
-    {
-        IChargePointSession? session = _sessionManager.GetByChargePointId(chargerId);
-
-        if (session == null)
-        {
-            // The session manager only tracks currently-connected sessions,
-            // so null always means "not connected right now".
-            error = _sessionManager.IsConnected(chargerId)
-                ? StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Charger is not connected", chargerId })
-                : NotFound(new { error = "Charger not connected", chargerId });
-            return null;
-        }
-
-        error = null;
-        return session;
-    }
-
-    /// <summary>
-    /// Maps an <see cref="OcppCommandResult"/> to an <see cref="IActionResult"/>.
-    /// 200 OK on success, 502 Bad Gateway on charger error or timeout.
-    /// </summary>
-    private IActionResult OcppResultToActionResult(OcppCommandResult result, object context)
+    private IActionResult GatewayResultToActionResult(ChargerCommandResult result, object context)
     {
         if (result.Success)
-        {
             return Ok(new { success = true, response = result.RawPayload, context });
-        }
 
-        return StatusCode(StatusCodes.Status502BadGateway, new
+        return result.ErrorCode switch
         {
-            success = false,
-            errorCode = result.ErrorCode,
-            errorDescription = result.ErrorDescription,
-            context
-        });
+            "ChargerNotFound" => NotFound(new { error = "Charger not connected", context }),
+            "ChargerOffline"  => StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "Charger is not connected", context }),
+            _                 => StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                success = false,
+                errorCode = result.ErrorCode,
+                errorDescription = result.ErrorDescription,
+                context
+            })
+        };
     }
 }
-
-
-
