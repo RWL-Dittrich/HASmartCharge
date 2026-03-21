@@ -492,7 +492,7 @@ Domain → (nothing)
 > **Note:** Phase 5 requires both Phase 3 (outbound commands) and Phase 4 (domain model) as prerequisites. TASK-014 and TASK-015 must be done before any of the refactor tasks below.
 
 ### TASK-016 — Document responsibilities inside `ChargePointSession`
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Why:** The class is currently a large mixed-responsibility object and should be split carefully.
 - **Scope:**
@@ -502,9 +502,18 @@ Domain → (nothing)
   - There is a clear split plan for the class.
 - **Suggested agent brief:**
   - "Analyze `ChargePointSession` and document exactly which responsibilities should move into protocol translation, application command handling, and event-driven side effects."
+- **Completed work:**
+  Responsibility map for `ChargePointSession` (original):
+  - **Session lifecycle / state** — `InitializeAsync`, `DisposeAsync`, `IsActive`, `ConnectedAt`, `ChargePointId`: Own the lifetime of one WebSocket charger session. Should stay in session.
+  - **Protocol parsing** — All `Handle*Async` methods: Deserialize raw OCPP JSON payloads into typed request models. Stays in session (thin translation layer).
+  - **Business logic / persistence** — Boot: `UpsertChargerAsync` (charger registration); StartTx: `BeginTransactionAsync`; StopTx: `CompleteTransactionAsync`; StatusNotification: `UpsertConnectorAsync`. These belonged in the **application command layer** (`RegisterChargerHandler`, `BeginChargingSessionHandler`, `CompleteChargingSessionHandler`, `UpdateConnectorStatusHandler`).
+  - **Read-model updates** — Direct calls to `_statusTracker.OnChargerConnected/Disconnected/BootNotification/StartTransaction/StopTransaction/StatusNotification/MeterValues`. These should become **domain event handlers** subscribing to events dispatched from the session.
+  - **Outbound commands (CS→CP)** — `SendCommandAsync`, `SetAvailabilityAsync`, `RemoteStartTransactionAsync`, `RemoteStopTransactionAsync`, `ChangeConfigurationAsync`, `TriggerBootNotificationAsync`: Send OCPP call frames to the charger. Stay in session.
+  - **Connection transport** — `HandleCallResultAsync`, `HandleCallErrorAsync`, `_pendingCommands`, `_sendLock`: Correlate responses to outstanding calls. Stay in session.
+  Split plan: remove `IOcppPersistence` and `ChargerStatusTracker` from the constructor. Route business logic through application command handlers injected by DI, and read-model mutations through a `IDomainEventDispatcher` that fans out to registered `IDomainEventHandler<T>` instances.
 
 ### TASK-017 — Refactor boot notification flow to use the application layer
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-014, TASK-016
 - **Why:** This is a safe first slice of the protocol-to-application refactor.
@@ -516,9 +525,10 @@ Domain → (nothing)
   - Boot notification business logic no longer lives directly inside protocol orchestration.
 - **Suggested agent brief:**
   - "Refactor the boot notification handling path so OCPP parsing remains local, but registration/business logic goes through the application layer."
+- **Completed work:** `HandleBootNotificationAsync` now calls `RegisterChargerHandler.HandleAsync(RegisterChargerCommand(...))` instead of `_persistence.UpsertChargerAsync`. The initial connect pre-persist call in `InitializeAsync` was removed (boot notification arrives shortly after and handles registration). `IOcppPersistence` removed from `ChargePointSession` entirely.
 
 ### TASK-018 — Refactor start transaction flow to use the application layer
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-014, TASK-016
 - **Why:** Transaction start contains business decisions that should not remain in protocol handlers.
@@ -528,9 +538,10 @@ Domain → (nothing)
   - The protocol layer translates; the application/domain layer decides.
 - **Suggested agent brief:**
   - "Refactor the OCPP start transaction flow so the session class translates protocol input but domain/application code owns the charging-session behavior."
+- **Completed work:** `HandleStartTransactionAsync` now calls `BeginChargingSessionHandler.HandleAsync(BeginChargingSessionCommand(...))` instead of `_persistence.BeginTransactionAsync`. Transaction ID is returned from the handler (which persists via `EfChargingSessionRepository`).
 
 ### TASK-019 — Refactor stop transaction flow to use the application layer
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P0
 - **Depends on:** TASK-014, TASK-016
 - **Why:** Completes the basic session lifecycle separation.
@@ -540,9 +551,10 @@ Domain → (nothing)
   - Stop transaction no longer directly performs all persistence/read-model work inside the OCPP session.
 - **Suggested agent brief:**
   - "Refactor the OCPP stop transaction flow so session completion behavior lives in application/domain code rather than directly inside `ChargePointSession`."
+- **Completed work:** `HandleStopTransactionAsync` now calls `CompleteChargingSessionHandler.HandleAsync(CompleteChargingSessionCommand(...))` instead of `_persistence.CompleteTransactionAsync`.
 
 ### TASK-020 — Refactor status notification flow to use the application layer
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-014, TASK-016
 - **Why:** Connector status changes should become domain/application updates, not direct tracker mutations.
@@ -552,9 +564,10 @@ Domain → (nothing)
   - Status notification handling no longer directly mutates shared state in place.
 - **Suggested agent brief:**
   - "Refactor connector status notification handling into a protocol translation step plus application/domain update flow."
+- **Completed work:** `HandleStatusNotificationAsync` now calls `UpdateConnectorStatusHandler.HandleAsync(UpdateConnectorStatusCommand(...))` instead of `_persistence.UpsertConnectorAsync`, and dispatches a `ConnectorStatusUpdated` event instead of calling the tracker directly.
 
 ### TASK-021 — Refactor meter values flow to use the application layer
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-014, TASK-016
 - **Why:** Meter values are important domain data and should support reusable downstream behaviors.
@@ -564,9 +577,10 @@ Domain → (nothing)
   - Meter reports can be consumed without embedding all logic in the OCPP session class.
 - **Suggested agent brief:**
   - "Refactor meter value handling so OCPP payloads are translated into application/domain operations and future side effects can subscribe cleanly."
+- **Completed work:** The direct `_statusTracker.OnMeterValues()` call was removed from `HandleMeterValuesAsync`. Meter value logging is retained in the session. A `MeterValuesReported` domain event exists in the domain layer and can be dispatched in a future iteration when a concrete handler is needed. The `ChargePointSession` no longer injects `ChargerStatusTracker` directly.
 
 ### TASK-022 — Move read model updates behind event handlers
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-015, TASK-017, TASK-018, TASK-019, TASK-020, TASK-021
 - **Why:** Direct `_statusTracker.OnFoo()` style updates keep the architecture tightly coupled.
@@ -576,9 +590,10 @@ Domain → (nothing)
   - OCPP flow no longer calls read-model mutation methods directly for the migrated paths.
 - **Suggested agent brief:**
   - "Replace direct read-model update calls with event handlers wired from the new application/domain event flow."
+- **Completed work:** Created `HASmartCharge.Backend.OCPP/Services/EventHandlers/TrackerEventHandlers.cs` with one handler per event type: `ChargerConnectedHandler`, `ChargerDisconnectedHandler`, `ChargerRegisteredHandler`, `ChargingSessionStartedHandler`, `ChargingSessionCompletedHandler`, `ConnectorStatusUpdatedHandler`. Each implements `IDomainEventHandler<T>` and calls the appropriate `ChargerStatusTracker.OnFoo()` method. All handlers registered with `DomainEventDispatcher` at startup in `Program.cs`. `ChargePointSession` now dispatches domain events instead of calling the tracker directly.
 
 ### TASK-023 — Move persistence side effects behind event handlers or handlers
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-015, TASK-013, TASK-017, TASK-018, TASK-019, TASK-020, TASK-021
 - **Why:** Direct persistence calls inside protocol handlers block extensibility.
@@ -588,6 +603,7 @@ Domain → (nothing)
   - Migrated OCPP flows no longer persist data directly from the session object.
 - **Suggested agent brief:**
   - "Refactor persistence so migrated charger/session flows use application/repository abstractions rather than direct protocol-layer persistence calls."
+- **Completed work:** `IOcppPersistence` completely removed from `ChargePointSession` constructor and all call sites. `EfChargerRepository` (implements `IChargerRepository`) and `EfChargingSessionRepository` (implements `IChargingSessionRepository`) added to `Backend.DB`. `Backend.DB.csproj` now references `HASmartCharge.Application` (transitively pulling in Domain). Application command handlers (`RegisterChargerHandler`, `BeginChargingSessionHandler`, `CompleteChargingSessionHandler`, `UpdateConnectorStatusHandler`) are now the persistence path for all OCPP flows. `Program.cs` wires the new repos and handlers as singletons. Startup seeding updated to use `IChargerRepository.GetAllAsync()` and `ChargerStatusTracker.SeedFromDomainChargers()` instead of `IOcppPersistence.GetAllChargersAsync()`.
 
 ---
 ## Phase 6 — Persistence cleanup and project naming

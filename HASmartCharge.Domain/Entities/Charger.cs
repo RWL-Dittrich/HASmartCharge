@@ -72,4 +72,35 @@ public sealed class Charger
     }
 
     public void ClearEvents() => _events.Clear();
+
+    /// <summary>Reconstitutes a charger from persisted state. Does not raise domain events.</summary>
+    public static Charger Reconstitute(
+        string chargePointId,
+        string vendor,
+        string model,
+        string? serialNumber,
+        string? firmwareVersion,
+        bool isConnected,
+        DateTimeOffset? lastConnectedAt,
+        DateTimeOffset? lastDisconnectedAt,
+        DateTimeOffset registeredAt,
+        IEnumerable<(int ConnectorId, string Status, string? ErrorCode)>? connectors = null)
+    {
+        var charger = new Charger
+        {
+            ChargePointId = chargePointId,
+            Vendor = vendor,
+            Model = model,
+            SerialNumber = serialNumber,
+            FirmwareVersion = firmwareVersion,
+            IsConnected = isConnected,
+            LastConnectedAt = lastConnectedAt,
+            LastDisconnectedAt = lastDisconnectedAt,
+            RegisteredAt = registeredAt
+        };
+        if (connectors is not null)
+            foreach (var (id, status, err) in connectors)
+                charger.AddOrUpdateConnector(id, status, err);
+        return charger;
+    }
 }

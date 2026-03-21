@@ -1,4 +1,6 @@
 using System.Net.WebSockets;
+using HASmartCharge.Application.Commands;
+using HASmartCharge.Application.Events;
 using HASmartCharge.Backend.OCPP.Application;
 using HASmartCharge.Backend.OCPP.Domain;
 using HASmartCharge.Backend.OCPP.Services;
@@ -18,9 +20,12 @@ public class OcppConnectionOrchestrator
     private readonly WebSocketMessageService _messageService;
     private readonly ISessionManager _sessionManager;
     private readonly IOcppMessageRouter _messageRouter;
-    private readonly ChargerStatusTracker _statusTracker;
+    private readonly IDomainEventDispatcher _dispatcher;
     private readonly ChargerConfigurationService _configurationService;
-    private readonly IOcppPersistence _persistence;
+    private readonly RegisterChargerHandler _registerChargerHandler;
+    private readonly BeginChargingSessionHandler _beginChargingSessionHandler;
+    private readonly CompleteChargingSessionHandler _completeChargingSessionHandler;
+    private readonly UpdateConnectorStatusHandler _updateConnectorStatusHandler;
 
     public OcppConnectionOrchestrator(
         ILogger<OcppConnectionOrchestrator> logger,
@@ -28,18 +33,24 @@ public class OcppConnectionOrchestrator
         WebSocketMessageService messageService,
         ISessionManager sessionManager,
         IOcppMessageRouter messageRouter,
-        ChargerStatusTracker statusTracker,
+        IDomainEventDispatcher dispatcher,
         ChargerConfigurationService configurationService,
-        IOcppPersistence persistence)
+        RegisterChargerHandler registerChargerHandler,
+        BeginChargingSessionHandler beginChargingSessionHandler,
+        CompleteChargingSessionHandler completeChargingSessionHandler,
+        UpdateConnectorStatusHandler updateConnectorStatusHandler)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
-        _statusTracker = statusTracker ?? throw new ArgumentNullException(nameof(statusTracker));
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
-        _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
+        _registerChargerHandler = registerChargerHandler ?? throw new ArgumentNullException(nameof(registerChargerHandler));
+        _beginChargingSessionHandler = beginChargingSessionHandler ?? throw new ArgumentNullException(nameof(beginChargingSessionHandler));
+        _completeChargingSessionHandler = completeChargingSessionHandler ?? throw new ArgumentNullException(nameof(completeChargingSessionHandler));
+        _updateConnectorStatusHandler = updateConnectorStatusHandler ?? throw new ArgumentNullException(nameof(updateConnectorStatusHandler));
     }
 
     /// <summary>
@@ -70,9 +81,12 @@ public class OcppConnectionOrchestrator
             chargePointId,
             connection,
             _loggerFactory.CreateLogger<ChargePointSession>(),
-            _statusTracker,
+            _dispatcher,
             _configurationService,
-            _persistence);
+            _registerChargerHandler,
+            _beginChargingSessionHandler,
+            _completeChargingSessionHandler,
+            _updateConnectorStatusHandler);
 
         // Register session
         _sessionManager.RegisterSession(session);

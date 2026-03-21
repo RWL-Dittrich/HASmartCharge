@@ -1,3 +1,4 @@
+using HASmartCharge.Application.Commands;
 using HASmartCharge.Application.Events;
 using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Backend.BackgroundServices;
@@ -9,6 +10,7 @@ using HASmartCharge.Backend.Services.Auth;
 using HASmartCharge.Backend.Services.Auth.Interfaces;
 using HASmartCharge.Backend.Services.Interfaces;
 using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.OCPP.Services.EventHandlers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Scalar.AspNetCore;
@@ -59,10 +61,21 @@ builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender
 builder.Services.AddSingleton<IChargerGateway, OcppChargerGateway>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
 
-// Domain event dispatcher (handlers registered in future phases)
-builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
+// Domain event dispatcher
+builder.Services.AddSingleton<DomainEventDispatcher>();
+builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredService<DomainEventDispatcher>());
 
-// OCPP persistence (uses IServiceScopeFactory internally for short-lived DbContext scopes)
+// Concrete repositories (implement application interfaces, backed by EF Core)
+builder.Services.AddSingleton<IChargerRepository, EfChargerRepository>();
+builder.Services.AddSingleton<IChargingSessionRepository, EfChargingSessionRepository>();
+
+// Application command handlers
+builder.Services.AddSingleton<RegisterChargerHandler>();
+builder.Services.AddSingleton<BeginChargingSessionHandler>();
+builder.Services.AddSingleton<CompleteChargingSessionHandler>();
+builder.Services.AddSingleton<UpdateConnectorStatusHandler>();
+
+// OCPP persistence (legacy — kept for OcppRepository which may still be referenced elsewhere)
 builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.IOcppPersistence, HASmartCharge.Backend.DB.OcppRepository>();
 
 WebApplication app = builder.Build();
@@ -82,27 +95,39 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// Wire domain event handlers to the dispatcher
+{
+    var dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
+    var tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
+    dispatcher.Register(new ChargerConnectedHandler(tracker));
+    dispatcher.Register(new ChargerDisconnectedHandler(tracker));
+    dispatcher.Register(new ChargerRegisteredHandler(tracker));
+    dispatcher.Register(new ChargingSessionStartedHandler(tracker));
+    dispatcher.Register(new ChargingSessionCompletedHandler(tracker));
+    dispatcher.Register(new ConnectorStatusUpdatedHandler(tracker));
+}
+
 {
     using IServiceScope scope = app.Services.CreateScope();
     ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    
-    //Do migrations here 
-    if((await dbContext.Database.GetPendingMigrationsAsync()).Any())
+
+    //Do migrations here
+    if ((await dbContext.Database.GetPendingMigrationsAsync()).Any())
     {
         await dbContext.Database.MigrateAsync();
     }
-    
+
     // Seed the in-memory charger status tracker from the database
     // so the API shows all known chargers (as disconnected) before any WebSocket connections arrive
-    IOcppPersistence persistence = app.Services.GetRequiredService<IOcppPersistence>();
+    IChargerRepository chargerRepository = app.Services.GetRequiredService<IChargerRepository>();
     ChargerStatusTracker statusTracker = app.Services.GetRequiredService<ChargerStatusTracker>();
-    List<PersistedCharger> knownChargers = await persistence.GetAllChargersAsync();
-    statusTracker.SeedFromDatabase(knownChargers);
-    
+    IReadOnlyList<HASmartCharge.Domain.Entities.Charger> knownChargers = await chargerRepository.GetAllAsync();
+    statusTracker.SeedFromDomainChargers(knownChargers);
+
     // Initialize the Home Assistant connection manager
     IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
     await connectionManager.InitializeAsync();
-    
+
     try
     {
         IHomeAssistantApiService apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();

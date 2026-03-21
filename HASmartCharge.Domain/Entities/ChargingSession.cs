@@ -35,4 +35,25 @@ public sealed class ChargingSession
         StopReason = stopReason;
         CompletedAt = completedAt;
     }
+
+    /// <summary>Reconstitutes a session from persisted state. Does not raise domain events.</summary>
+    public static ChargingSession Reconstitute(
+        int transactionId, string chargePointId, int connectorId, string idTag,
+        int meterStartWh, DateTimeOffset startedAt,
+        int? meterStopWh, string? stopReason, DateTimeOffset? completedAt)
+    {
+        var session = new ChargingSession
+        {
+            TransactionId = transactionId,
+            ChargePointId = chargePointId,
+            ConnectorId = connectorId,
+            IdTag = idTag,
+            MeterStartWh = meterStartWh,
+            StartedAt = startedAt,
+            MeterStopWh = meterStopWh,
+            StopReason = stopReason,
+            CompletedAt = completedAt
+        };
+        return session;
+    }
 }

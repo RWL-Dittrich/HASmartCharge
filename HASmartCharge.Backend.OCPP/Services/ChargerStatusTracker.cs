@@ -72,6 +72,56 @@ public class ChargerStatusTracker : IChargerReadModel
         _logger.LogInformation("Seeded {Count} chargers from database into status tracker", count);
     }
 
+    /// <summary>
+    /// Seed the in-memory tracker from domain charger entities.
+    /// Called once at startup so the API shows all known chargers (as disconnected)
+    /// before any WebSocket connections arrive.
+    /// </summary>
+    public void SeedFromDomainChargers(IReadOnlyList<HASmartCharge.Domain.Entities.Charger> chargers)
+    {
+        int count = 0;
+        foreach (HASmartCharge.Domain.Entities.Charger charger in chargers)
+        {
+            ChargerStatus status = _chargerStatuses.GetOrAdd(charger.ChargePointId, id => new ChargerStatus
+            {
+                ChargePointId = id
+            });
+
+            // Mark as disconnected — a live WebSocket connect will flip this to true
+            status.IsConnected = false;
+            status.LastUpdated = charger.LastConnectedAt?.UtcDateTime ?? DateTime.UtcNow;
+            status.ConnectedAt = charger.LastConnectedAt?.UtcDateTime;
+
+            // Populate boot info if we have it
+            if (!string.IsNullOrEmpty(charger.Vendor) || !string.IsNullOrEmpty(charger.Model))
+            {
+                status.Info = new ChargerInfo
+                {
+                    Vendor = charger.Vendor,
+                    Model = charger.Model,
+                    SerialNumber = charger.SerialNumber,
+                    FirmwareVersion = charger.FirmwareVersion
+                };
+            }
+
+            // Populate connector statuses
+            foreach (HASmartCharge.Domain.Entities.Connector connector in charger.Connectors)
+            {
+                ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(connector.ConnectorId, id => new ConnectorStatus
+                {
+                    ConnectorId = id
+                });
+
+                connectorStatus.Status = connector.Status ?? "Unknown";
+                connectorStatus.ErrorCode = connector.ErrorCode ?? "NoError";
+            }
+
+            count++;
+        }
+
+        _logger.LogInformation("Seeded {Count} chargers from domain entities into status tracker", count);
+    }
+
     #endregion
 
     #region Connection Management
