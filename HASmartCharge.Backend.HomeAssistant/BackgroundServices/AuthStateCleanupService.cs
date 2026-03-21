@@ -1,6 +1,8 @@
-﻿using HASmartCharge.Backend.Services.Auth.Interfaces;
+using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace HASmartCharge.Backend.BackgroundServices;
+namespace HASmartCharge.Backend.HomeAssistant.BackgroundServices;
 
 public class AuthStateCleanupService : BackgroundService
 {
@@ -42,4 +44,3 @@ public class AuthStateCleanupService : BackgroundService
         _logger.LogInformation("Auth State Cleanup Service stopped");
     }
 }
-

@@ -1,6 +1,6 @@
 ﻿using HASmartCharge.Backend.DB.Models;
-using HASmartCharge.Backend.Models.Auth;
-using HASmartCharge.Backend.Services.Auth.Interfaces;
+using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
+using HASmartCharge.Backend.HomeAssistant.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;

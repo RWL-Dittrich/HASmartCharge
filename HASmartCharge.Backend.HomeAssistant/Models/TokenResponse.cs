@@ -1,6 +1,6 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
-namespace HASmartCharge.Backend.Models.Auth;
+namespace HASmartCharge.Backend.HomeAssistant.Models;
 
 /// <summary>
 /// Response from Home Assistant token endpoint
@@ -16,4 +16,3 @@ public class TokenResponse
     [JsonPropertyName("expires_in")]
     public int ExpiresIn { get; set; }
 }
-

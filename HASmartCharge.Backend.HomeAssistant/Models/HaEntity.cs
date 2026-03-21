@@ -1,6 +1,6 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
-namespace HASmartCharge.Backend.Models.HomeAssistant;
+namespace HASmartCharge.Backend.HomeAssistant.Models;
 
 public class HaEntity
 {
@@ -12,9 +12,9 @@ public class HaEntity
     public required Dictionary<string, object> Attributes { get; set; }
     [JsonPropertyName("last_changed")]
     public required DateTime LastChanged { get; set; }
-    
+
     public HaEntityType EntityType => GetEntityType();
-    
+
     private HaEntityType GetEntityType()
     {
         if (EntityId.StartsWith("sensor."))

@@ -2,14 +2,15 @@ using HASmartCharge.Application.Commands;
 using HASmartCharge.Application.Events;
 using HASmartCharge.Domain.Events;
 using HASmartCharge.Application.Interfaces;
-using HASmartCharge.Backend.BackgroundServices;
-using HASmartCharge.Backend.Configuration;
 using HASmartCharge.Backend.DB;
-using HASmartCharge.Backend.Models.HomeAssistant;
-using HASmartCharge.Backend.Services;
-using HASmartCharge.Backend.Services.Auth;
-using HASmartCharge.Backend.Services.Auth.Interfaces;
-using HASmartCharge.Backend.Services.Interfaces;
+using HASmartCharge.Backend.HomeAssistant.Auth;
+using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
+using HASmartCharge.Backend.HomeAssistant.BackgroundServices;
+using HASmartCharge.Backend.HomeAssistant.Configuration;
+using HASmartCharge.Backend.HomeAssistant.Models;
+using HASmartCharge.Backend.HomeAssistant.EventHandlers;
+using HASmartCharge.Backend.HomeAssistant.Services;
+using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
 using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -44,6 +45,8 @@ builder.Services.AddHostedService<TokenRefreshService>();
 
 // Register services
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
+builder.Services.AddSingleton<IHomeAutomationGateway, HomeAssistantGateway>();
+builder.Services.AddSingleton<HomeAutomationEventHandler>();
 
 // Register OCPP services (new layered architecture)
 builder.Services.AddSingleton<WebSocketMessageService>();
@@ -103,6 +106,13 @@ app.MapControllers();
     dispatcher.Register<ChargingSessionStarted>(tracker);
     dispatcher.Register<ChargingSessionCompleted>(tracker);
     dispatcher.Register<ConnectorStatusUpdated>(tracker);
+
+    var haHandler = app.Services.GetRequiredService<HomeAutomationEventHandler>();
+    dispatcher.Register<ChargerConnected>(haHandler);
+    dispatcher.Register<ChargerDisconnected>(haHandler);
+    dispatcher.Register<ConnectorStatusUpdated>(haHandler);
+    dispatcher.Register<ChargingSessionStarted>(haHandler);
+    dispatcher.Register<ChargingSessionCompleted>(haHandler);
 }
 
 {

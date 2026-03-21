@@ -1,7 +1,10 @@
-﻿using HASmartCharge.Backend.DB.Models;
-using HASmartCharge.Backend.Services.Auth.Interfaces;
+using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace HASmartCharge.Backend.BackgroundServices;
+namespace HASmartCharge.Backend.HomeAssistant.BackgroundServices;
 
 /// <summary>
 /// Background service that automatically refreshes the Home Assistant access token
@@ -29,28 +32,28 @@ public class TokenRefreshService : BackgroundService
             try
             {
                 await Task.Delay(_checkInterval, stoppingToken);
-                
+
                 using IServiceScope scope = _serviceProvider.CreateScope();
                 IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
-                
+
                 if (connectionManager.IsConnected())
                 {
                     HomeAssistantConnection? connection = connectionManager.GetConnection();
                     if (connection != null)
                     {
                         TimeSpan timeUntilExpiry = connection.ExpiresAt - DateTime.UtcNow;
-                        
+
                         // Refresh if token expires in less than 10 minutes
                         if (timeUntilExpiry.TotalMinutes < 10)
                         {
-                            _logger.LogInformation("Token expires in {Minutes} minutes, refreshing...", 
+                            _logger.LogInformation("Token expires in {Minutes} minutes, refreshing...",
                                 timeUntilExpiry.TotalMinutes);
-                            
+
                             await connectionManager.RefreshAccessTokenAsync();
                         }
                         else
                         {
-                            _logger.LogDebug("Token still valid for {Minutes} minutes", 
+                            _logger.LogDebug("Token still valid for {Minutes} minutes",
                                 timeUntilExpiry.TotalMinutes);
                         }
                     }
@@ -61,8 +64,7 @@ public class TokenRefreshService : BackgroundService
                 _logger.LogError(ex, "Error in token refresh service");
             }
         }
-        
+
         _logger.LogInformation("Token refresh service stopped");
     }
 }
-

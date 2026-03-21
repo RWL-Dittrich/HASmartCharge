@@ -713,18 +713,18 @@ Domain → (nothing)
 > **Note:** Phase 7 is independent from Phases 3–6 and can be started whenever convenient. TASK-029 (inventory) has no unmet dependencies.
 
 ### TASK-029 — Inventory all Home Assistant concerns currently living in `Backend`
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Why:** HA integration is structurally tangled even though it is conceptually separate.
 - **Scope:**
   - Identify services, models, config, background services, controllers, persistence objects, and startup hooks related to HA.
 - **Done when:**
   - A complete inventory exists for extraction work.
-- **Suggested agent brief:**
-  - “Audit the backend for all Home Assistant-related code and produce a concrete extraction inventory grouped by service/model/config/startup responsibilities.”
+- **Completed work:**
+  - Inventoried all HA code: auth services (IHomeAssistantAuthService, HomeAssistantAuthService, IHomeAssistantConnectionManager, HomeAssistantConnectionManager, IAuthStateStore, InMemoryAuthStateStore), API service (IHomeAssistantApiService, HomeAssistantApiService), models (HaEntity, AuthState, TokenResponse), config (HomeAssistantAuthOptions), background services (AuthStateCleanupService, TokenRefreshService), controller (HomeAssistantAuthController), DB model (HomeAssistantConnection), and DI/startup wiring in Program.cs.
 
 ### TASK-030 — Define `IHomeAutomationGateway` in `Application`
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P1
 - **Depends on:** TASK-002
 - **Why:** HA should integrate through an anti-corruption boundary, not direct service injection into core flows.
@@ -732,11 +732,11 @@ Domain → (nothing)
   - Define a minimal application-facing abstraction for publishing charger/session state and reading automation data if needed.
 - **Done when:**
   - The application layer exposes a clean HA-facing port.
-- **Suggested agent brief:**
-  - “Define an `IHomeAutomationGateway` abstraction in the application layer for future Home Assistant publishing/reading scenarios.”
+- **Completed work:**
+  - Created `HASmartCharge.Application/Interfaces/IHomeAutomationGateway.cs` with publish-only methods: `PublishChargerStateAsync`, `PublishConnectorStatusAsync`, `PublishChargingSessionAsync`, and `IsConnected()`. Follows the `IChargerGateway` pattern — protocol-agnostic, business-term interface.
 
 ### TASK-031 — Extract Home Assistant integration into a dedicated project or module
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P2
 - **Depends on:** TASK-029, TASK-030
 - **Why:** HA code should be isolated from the core host/backend responsibilities.
@@ -744,11 +744,15 @@ Domain → (nothing)
   - Move HA auth, token lifecycle, API client code, models, configuration, and background services into a dedicated module/project.
 - **Done when:**
   - HA concerns are grouped coherently and consumed via abstractions.
-- **Suggested agent brief:**
-  - “Extract Home Assistant-specific auth/API/background-service concerns into a dedicated adapter-style project or module while keeping the app buildable.”
+- **Completed work:**
+  - Created `HASmartCharge.Backend.HomeAssistant` project (references Application, Backend.DB, Domain).
+  - Moved all HA auth services, API service, models, config, and background services from Backend into the new project with updated namespaces (`HASmartCharge.Backend.HomeAssistant.*`).
+  - Implemented `HomeAssistantGateway : IHomeAutomationGateway` — logs + no-ops when HA not connected, ready for future API call implementation.
+  - Controller stays in Backend with updated `using` statements.
+  - Backend references Backend.HomeAssistant. Program.cs DI wiring updated.
 
 ### TASK-032 — Publish charger lifecycle changes to Home Assistant through event-driven handlers
-- **Status:** TODO
+- **Status:** DONE
 - **Priority:** P2
 - **Depends on:** TASK-015, TASK-030, TASK-031
 - **Why:** HA integration currently exists but is not meaningfully connected to charging behavior.
@@ -756,8 +760,10 @@ Domain → (nothing)
   - Implement event handlers that map charger/session events to HA gateway calls.
 - **Done when:**
   - At least key charger/session events can be published through the HA abstraction.
-- **Suggested agent brief:**
-  - “Wire charger/session domain events into Home Assistant publishing handlers through the new application gateway abstraction.”
+- **Completed work:**
+  - Created `HomeAutomationEventHandler` implementing `IDomainEventHandler` for `ChargerConnected`, `ChargerDisconnected`, `ConnectorStatusUpdated`, `ChargingSessionStarted`, `ChargingSessionCompleted`.
+  - Each handler delegates to the corresponding `IHomeAutomationGateway.Publish*Async()` method.
+  - Registered as singleton in DI and wired to `DomainEventDispatcher` in Program.cs alongside the existing `ChargerStatusTracker` handlers.
 
 ---
 

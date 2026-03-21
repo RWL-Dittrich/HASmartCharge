@@ -1,4 +1,4 @@
-﻿namespace HASmartCharge.Backend.Models.Auth;
+namespace HASmartCharge.Backend.HomeAssistant.Models;
 
 public class AuthState
 {
@@ -8,4 +8,3 @@ public class AuthState
     public DateTime ExpiresAt { get; set; }
     public string? AuthorizationCode { get; set; }
 }
-

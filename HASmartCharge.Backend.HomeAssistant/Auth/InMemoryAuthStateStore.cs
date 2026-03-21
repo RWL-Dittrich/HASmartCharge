@@ -1,8 +1,9 @@
-﻿using System.Collections.Concurrent;
-using HASmartCharge.Backend.Models.Auth;
-using HASmartCharge.Backend.Services.Auth.Interfaces;
+using System.Collections.Concurrent;
+using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
+using HASmartCharge.Backend.HomeAssistant.Models;
+using Microsoft.Extensions.Logging;
 
-namespace HASmartCharge.Backend.Services.Auth;
+namespace HASmartCharge.Backend.HomeAssistant.Auth;
 
 public class InMemoryAuthStateStore : IAuthStateStore
 {
@@ -29,12 +30,12 @@ public class InMemoryAuthStateStore : IAuthStateStore
                 _logger.LogInformation("Retrieved valid auth state for state token: {State}", state);
                 return authState;
             }
-            
+
             _logger.LogWarning("Auth state expired for state token: {State}", state);
             RemoveState(state);
             return null;
         }
-        
+
         _logger.LogWarning("Auth state not found for state token: {State}", state);
         return null;
     }
@@ -53,7 +54,7 @@ public class InMemoryAuthStateStore : IAuthStateStore
             _logger.LogInformation("Updated authorization code for state token: {State}", state);
             return true;
         }
-        
+
         _logger.LogWarning("Failed to update authorization code - state not found: {State}", state);
         return false;
     }
@@ -76,4 +77,3 @@ public class InMemoryAuthStateStore : IAuthStateStore
         }
     }
 }
-
