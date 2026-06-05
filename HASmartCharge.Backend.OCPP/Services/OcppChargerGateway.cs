@@ -28,65 +28,65 @@ public sealed class OcppChargerGateway : IChargerGateway
 
     public async Task<ChargerCommandResult> ResetChargerAsync(string chargerId, bool hardReset, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.SendCommandAsync("Reset", new ResetRequest { Type = hardReset ? "Hard" : "Soft" }, ct);
+        var result = await session!.SendCommandAsync("Reset", new ResetRequest { Type = hardReset ? "Hard" : "Soft" }, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> ClearCacheAsync(string chargerId, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.SendCommandAsync("ClearCache", new { }, ct);
+        var result = await session!.SendCommandAsync("ClearCache", new { }, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> TriggerMessageAsync(string chargerId, string requestedMessage, int? connectorId, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.SendCommandAsync("TriggerMessage", new TriggerMessageRequest { RequestedMessage = requestedMessage, ConnectorId = connectorId }, ct);
+        var result = await session!.SendCommandAsync("TriggerMessage", new TriggerMessageRequest { RequestedMessage = requestedMessage, ConnectorId = connectorId }, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> GetDiagnosticsAsync(string chargerId, string location, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.SendCommandAsync("GetDiagnostics", new GetDiagnosticsRequest { Location = location }, ct);
+        var result = await session!.SendCommandAsync("GetDiagnostics", new GetDiagnosticsRequest { Location = location }, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> SetConnectorAvailabilityAsync(string chargerId, int connectorId, bool available, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.SetAvailabilityAsync(connectorId, available, ct);
+        var result = await session!.SetAvailabilityAsync(connectorId, available, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> UnlockConnectorAsync(string chargerId, int connectorId, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.SendCommandAsync("UnlockConnector", new UnlockConnectorRequest { ConnectorId = connectorId }, ct);
+        var result = await session!.SendCommandAsync("UnlockConnector", new UnlockConnectorRequest { ConnectorId = connectorId }, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> StartTransactionAsync(string chargerId, int connectorId, string idTag, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.RemoteStartTransactionAsync(connectorId, idTag, ct);
+        var result = await session!.RemoteStartTransactionAsync(connectorId, idTag, ct);
         return Map(result);
     }
 
     public async Task<ChargerCommandResult> StopTransactionAsync(string chargerId, int transactionId, CancellationToken ct = default)
     {
-        ChargerCommandResult? err = TryGetActiveSession(chargerId, out IChargePointSession? session);
+        var err = TryGetActiveSession(chargerId, out var session);
         if (err is not null) return err;
-        OcppCommandResult result = await session!.RemoteStopTransactionAsync(transactionId, ct);
+        var result = await session!.RemoteStopTransactionAsync(transactionId, ct);
         return Map(result);
     }
 }

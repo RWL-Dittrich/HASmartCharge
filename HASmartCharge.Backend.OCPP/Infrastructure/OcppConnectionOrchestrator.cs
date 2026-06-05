@@ -69,8 +69,8 @@ public class OcppConnectionOrchestrator
             remoteEndPoint);
 
         // Create transport connection
-        string connectionId = Guid.NewGuid().ToString();
-        WebSocketConnection connection = new WebSocketConnection(
+        var connectionId = Guid.NewGuid().ToString();
+        var connection = new WebSocketConnection(
             webSocket,
             connectionId,
             remoteEndPoint,
@@ -120,7 +120,7 @@ public class OcppConnectionOrchestrator
         while (connection.IsOpen && !cancellationToken.IsCancellationRequested)
         {
             // Receive message
-            string? rawMessage = await connection.ReceiveAsync(cancellationToken);
+            var rawMessage = await connection.ReceiveAsync(cancellationToken);
 
             if (rawMessage == null)
             {
@@ -129,7 +129,7 @@ public class OcppConnectionOrchestrator
             }
 
             // Route message and get response
-            string? response = await _messageRouter.RouteAsync(connection, rawMessage, cancellationToken);
+            var response = await _messageRouter.RouteAsync(connection, rawMessage, cancellationToken);
 
             // Send response if needed
             if (!string.IsNullOrEmpty(response))

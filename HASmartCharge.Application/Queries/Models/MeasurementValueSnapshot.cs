@@ -17,14 +17,14 @@ public sealed record MeasurementValueSnapshot
 
     public decimal? AsDecimal()
     {
-        return decimal.TryParse(Value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result)
+        return decimal.TryParse(Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result)
             ? result
             : null;
     }
 
     public int? AsInt()
     {
-        return int.TryParse(Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int result)
+        return int.TryParse(Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result)
             ? result
             : null;
     }

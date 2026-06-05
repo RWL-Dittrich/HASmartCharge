@@ -17,28 +17,28 @@ public sealed class EfChargingSessionRepository : IChargingSessionRepository
 
     public async Task<ChargingSession?> GetByTransactionIdAsync(int transactionId, CancellationToken ct = default)
     {
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        ChargingTransaction? ef = await db.ChargingTransactions.FirstOrDefaultAsync(t => t.Id == transactionId, ct);
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ef = await db.ChargingTransactions.FirstOrDefaultAsync(t => t.Id == transactionId, ct);
         return ef is null ? null : ToDomain(ef);
     }
 
     public async Task<IReadOnlyList<ChargingSession>> GetActiveSessionsAsync(string? chargePointId = null, CancellationToken ct = default)
     {
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        IQueryable<ChargingTransaction> query = db.ChargingTransactions.Where(t => t.StopTime == null);
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var query = db.ChargingTransactions.Where(t => t.StopTime == null);
         if (chargePointId is not null)
             query = query.Where(t => t.ChargePointId == chargePointId);
-        List<ChargingTransaction> results = await query.ToListAsync(ct);
+        var results = await query.ToListAsync(ct);
         return results.Select(ToDomain).ToList().AsReadOnly();
     }
 
     public async Task<int> BeginSessionAsync(ChargingSession session, CancellationToken ct = default)
     {
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        ChargingTransaction ef = new ChargingTransaction
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ef = new ChargingTransaction
         {
             ChargePointId = session.ChargePointId,
             ConnectorId = session.ConnectorId,
@@ -53,9 +53,9 @@ public sealed class EfChargingSessionRepository : IChargingSessionRepository
 
     public async Task SaveAsync(ChargingSession session, CancellationToken ct = default)
     {
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        ChargingTransaction? ef = await db.ChargingTransactions.FirstOrDefaultAsync(t => t.Id == session.TransactionId, ct);
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var ef = await db.ChargingTransactions.FirstOrDefaultAsync(t => t.Id == session.TransactionId, ct);
         if (ef is null) return;
         if (session.CompletedAt.HasValue)
         {

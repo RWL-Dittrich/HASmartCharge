@@ -38,10 +38,10 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public void SeedFromDomainChargers(IReadOnlyList<HASmartCharge.Domain.Entities.Charger> chargers)
     {
-        int count = 0;
-        foreach (HASmartCharge.Domain.Entities.Charger charger in chargers)
+        var count = 0;
+        foreach (var charger in chargers)
         {
-            ChargerStatus status = _chargerStatuses.GetOrAdd(charger.ChargePointId, id => new ChargerStatus
+            var status = _chargerStatuses.GetOrAdd(charger.ChargePointId, id => new ChargerStatus
             {
                 ChargePointId = id
             });
@@ -64,9 +64,9 @@ public class ChargerStatusTracker : IChargerReadModel,
             }
 
             // Populate connector statuses
-            foreach (HASmartCharge.Domain.Entities.Connector connector in charger.Connectors)
+            foreach (var connector in charger.Connectors)
             {
-                ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(connector.ConnectorId, id => new ConnectorStatus
+                var connectorStatus = status.Connectors.GetOrAdd(connector.ConnectorId, id => new ConnectorStatus
                 {
                     ConnectorId = id
                 });
@@ -87,7 +87,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     public Task HandleAsync(ChargerConnected evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
+        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id
         });
@@ -103,7 +103,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     public Task HandleAsync(ChargerDisconnected evt, CancellationToken ct = default)
     {
-        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out ChargerStatus? status))
+        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out var status))
         {
             status.IsConnected = false;
             status.DisconnectedAt = DateTime.UtcNow;
@@ -120,7 +120,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     public Task HandleAsync(ChargerRegistered evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
+        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
@@ -148,14 +148,14 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     public Task HandleAsync(ConnectorStatusUpdated evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
+        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
+        var connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
         {
             ConnectorId = id
         });
@@ -177,14 +177,14 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     public Task HandleAsync(ChargingSessionStarted evt, CancellationToken ct = default)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
+        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorStatus connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
+        var connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
         {
             ConnectorId = id
         });
@@ -202,10 +202,10 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     public Task HandleAsync(ChargingSessionCompleted evt, CancellationToken ct = default)
     {
-        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out ChargerStatus? status))
+        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out var status))
         {
             // Find the connector with this transaction ID
-            ConnectorStatus? connector = status.Connectors.Values
+            var connector = status.Connectors.Values
                 .FirstOrDefault(c => c.ActiveTransactionId == evt.TransactionId);
 
             if (connector != null)
@@ -233,22 +233,22 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public void OnMeterValues(string chargePointId, MeterValuesRequest request)
     {
-        ChargerStatus status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
+        var status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
         {
             ChargePointId = id,
             IsConnected = true,
             ConnectedAt = DateTime.UtcNow
         });
 
-        ConnectorMeasurands measurands = status.Measurands.GetOrAdd(request.ConnectorId, id => new ConnectorMeasurands
+        var measurands = status.Measurands.GetOrAdd(request.ConnectorId, id => new ConnectorMeasurands
         {
             ConnectorId = id
         });
 
         // Process each meter value
-        foreach (MeterValue meterValue in request.MeterValue)
+        foreach (var meterValue in request.MeterValue)
         {
-            foreach (SampledValue sampledValue in meterValue.SampledValue)
+            foreach (var sampledValue in meterValue.SampledValue)
             {
                 UpdateMeasurand(measurands, sampledValue, meterValue.Timestamp);
             }
@@ -263,7 +263,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     private void UpdateMeasurand(ConnectorMeasurands measurands, SampledValue sampledValue, DateTime timestamp)
     {
-        MeasurandValue value = new MeasurandValue
+        var value = new MeasurandValue
         {
             Value = sampledValue.Value,
             Unit = sampledValue.Unit,
@@ -275,8 +275,8 @@ public class ChargerStatusTracker : IChargerReadModel,
         };
 
         // Map measurand to the appropriate property
-        string measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
-        string? phase = sampledValue.Phase;
+        var measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
+        var phase = sampledValue.Phase;
 
         switch (measurand)
         {
@@ -377,7 +377,7 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public IEnumerable<ChargerSnapshot> GetChargers(bool? connected = null)
     {
-        IEnumerable<ChargerStatus> statuses = connected switch
+        var statuses = connected switch
         {
             true => GetConnectedChargers(),
             false => GetAllChargerStatuses().Where(status => !status.IsConnected),
@@ -402,9 +402,9 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public IEnumerable<ActiveChargingSessionSnapshot> GetActiveChargingSessions(string? chargerId = null)
     {
-        IEnumerable<ChargerStatus> statuses = string.IsNullOrWhiteSpace(chargerId)
+        var statuses = string.IsNullOrWhiteSpace(chargerId)
             ? GetAllChargerStatuses()
-            : _chargerStatuses.TryGetValue(chargerId, out ChargerStatus? status)
+            : _chargerStatuses.TryGetValue(chargerId, out var status)
                 ? new[] { status }
                 : Enumerable.Empty<ChargerStatus>();
 
@@ -419,7 +419,7 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public ChargerStatus? GetChargerStatus(string chargePointId)
     {
-        return _chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status) ? status : null;
+        return _chargerStatuses.TryGetValue(chargePointId, out var status) ? status : null;
     }
 
     /// <summary>
@@ -443,9 +443,9 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public ConnectorStatus? GetConnectorStatus(string chargePointId, int connectorId)
     {
-        if (_chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status))
+        if (_chargerStatuses.TryGetValue(chargePointId, out var status))
         {
-            return status.Connectors.TryGetValue(connectorId, out ConnectorStatus? connectorStatus)
+            return status.Connectors.TryGetValue(connectorId, out var connectorStatus)
                 ? connectorStatus
                 : null;
         }
@@ -457,9 +457,9 @@ public class ChargerStatusTracker : IChargerReadModel,
     /// </summary>
     public ConnectorMeasurands? GetConnectorMeasurands(string chargePointId, int connectorId)
     {
-        if (_chargerStatuses.TryGetValue(chargePointId, out ChargerStatus? status))
+        if (_chargerStatuses.TryGetValue(chargePointId, out var status))
         {
-            return status.Measurands.TryGetValue(connectorId, out ConnectorMeasurands? measurands)
+            return status.Measurands.TryGetValue(connectorId, out var measurands)
                 ? measurands
                 : null;
         }
@@ -488,7 +488,7 @@ public class ChargerStatusTracker : IChargerReadModel,
                 .Where(c => c.ActiveTransactionId.HasValue)
                 .Select(c =>
                 {
-                    status.Measurands.TryGetValue(c.ConnectorId, out ConnectorMeasurands? measurands);
+                    status.Measurands.TryGetValue(c.ConnectorId, out var measurands);
                     return (status.ChargePointId, c, measurands);
                 }));
     }
@@ -506,7 +506,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     private ChargerSnapshot CreateChargerSnapshot(ChargerStatus status)
     {
-        List<ConnectorSnapshot> connectors = status.Connectors.Values
+        var connectors = status.Connectors.Values
             .OrderBy(connector => connector.ConnectorId)
             .Select(connector => CreateConnectorSnapshot(status, connector))
             .ToList();
@@ -542,7 +542,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     private ConnectorSnapshot CreateConnectorSnapshot(ChargerStatus status, ConnectorStatus connector)
     {
-        status.Measurands.TryGetValue(connector.ConnectorId, out ConnectorMeasurands? measurands);
+        status.Measurands.TryGetValue(connector.ConnectorId, out var measurands);
 
         return new ConnectorSnapshot
         {
@@ -562,7 +562,7 @@ public class ChargerStatusTracker : IChargerReadModel,
 
     private ActiveChargingSessionSnapshot CreateActiveChargingSessionSnapshot(ChargerStatus status, ConnectorStatus connector)
     {
-        status.Measurands.TryGetValue(connector.ConnectorId, out ConnectorMeasurands? measurands);
+        status.Measurands.TryGetValue(connector.ConnectorId, out var measurands);
 
         return new ActiveChargingSessionSnapshot
         {

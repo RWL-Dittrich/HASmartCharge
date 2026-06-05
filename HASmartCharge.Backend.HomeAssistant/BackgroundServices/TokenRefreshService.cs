@@ -1,4 +1,3 @@
-using HASmartCharge.Backend.DB.Models;
 using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,15 +32,15 @@ public class TokenRefreshService : BackgroundService
             {
                 await Task.Delay(_checkInterval, stoppingToken);
 
-                using IServiceScope scope = _serviceProvider.CreateScope();
-                IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
+                using var scope = _serviceProvider.CreateScope();
+                var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
 
                 if (connectionManager.IsConnected())
                 {
-                    HomeAssistantConnection? connection = connectionManager.GetConnection();
+                    var connection = connectionManager.GetConnection();
                     if (connection != null)
                     {
-                        TimeSpan timeUntilExpiry = connection.ExpiresAt - DateTime.UtcNow;
+                        var timeUntilExpiry = connection.ExpiresAt - DateTime.UtcNow;
 
                         // Refresh if token expires in less than 10 minutes
                         if (timeUntilExpiry.TotalMinutes < 10)

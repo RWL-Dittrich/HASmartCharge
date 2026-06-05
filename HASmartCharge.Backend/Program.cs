@@ -7,7 +7,6 @@ using HASmartCharge.Backend.HomeAssistant.Auth;
 using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
 using HASmartCharge.Backend.HomeAssistant.BackgroundServices;
 using HASmartCharge.Backend.HomeAssistant.Configuration;
-using HASmartCharge.Backend.HomeAssistant.Models;
 using HASmartCharge.Backend.HomeAssistant.EventHandlers;
 using HASmartCharge.Backend.HomeAssistant.Services;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
@@ -16,7 +15,7 @@ using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
@@ -79,8 +78,8 @@ builder.Services.AddSingleton<CompleteChargingSessionHandler>();
 builder.Services.AddSingleton<UpdateConnectorStatusHandler>();
 
 
-WebApplication app = builder.Build();
-ILogger startupLogger = app.Logger;
+var app = builder.Build();
+var startupLogger = app.Logger;
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -98,8 +97,8 @@ app.MapControllers();
 
 // Wire domain event handlers to the dispatcher
 {
-    DomainEventDispatcher dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
-    ChargerStatusTracker tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
+    var dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
+    var tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
     dispatcher.Register<ChargerConnected>(tracker);
     dispatcher.Register<ChargerDisconnected>(tracker);
     dispatcher.Register<ChargerRegistered>(tracker);
@@ -107,7 +106,7 @@ app.MapControllers();
     dispatcher.Register<ChargingSessionCompleted>(tracker);
     dispatcher.Register<ConnectorStatusUpdated>(tracker);
 
-    HomeAutomationEventHandler haHandler = app.Services.GetRequiredService<HomeAutomationEventHandler>();
+    var haHandler = app.Services.GetRequiredService<HomeAutomationEventHandler>();
     dispatcher.Register<ChargerConnected>(haHandler);
     dispatcher.Register<ChargerDisconnected>(haHandler);
     dispatcher.Register<ConnectorStatusUpdated>(haHandler);
@@ -116,8 +115,8 @@ app.MapControllers();
 }
 
 {
-    using IServiceScope scope = app.Services.CreateScope();
-    ApplicationDbContext dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    using var scope = app.Services.CreateScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
     //Do migrations here
     if ((await dbContext.Database.GetPendingMigrationsAsync()).Any())
@@ -127,19 +126,19 @@ app.MapControllers();
 
     // Seed the in-memory charger status tracker from the database
     // so the API shows all known chargers (as disconnected) before any WebSocket connections arrive
-    IChargerRepository chargerRepository = app.Services.GetRequiredService<IChargerRepository>();
-    ChargerStatusTracker statusTracker = app.Services.GetRequiredService<ChargerStatusTracker>();
-    IReadOnlyList<HASmartCharge.Domain.Entities.Charger> knownChargers = await chargerRepository.GetAllAsync();
+    var chargerRepository = app.Services.GetRequiredService<IChargerRepository>();
+    var statusTracker = app.Services.GetRequiredService<ChargerStatusTracker>();
+    var knownChargers = await chargerRepository.GetAllAsync();
     statusTracker.SeedFromDomainChargers(knownChargers);
 
     // Initialize the Home Assistant connection manager
-    IHomeAssistantConnectionManager connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
+    var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
     await connectionManager.InitializeAsync();
 
     try
     {
-        IHomeAssistantApiService apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
-        List<HaEntity> devices = await apiService.GetDevicesAsync();
+        var apiService = scope.ServiceProvider.GetRequiredService<IHomeAssistantApiService>();
+        var devices = await apiService.GetDevicesAsync();
         startupLogger.LogInformation("Home Assistant devices found: {DeviceCount}", devices.Count);
     }
     catch (Exception ex)

@@ -42,24 +42,24 @@ public class DashboardController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetSummary()
     {
-        List<ChargerSnapshot> all = _chargerReadModel.GetChargers().ToList();
+        var all = _chargerReadModel.GetChargers().ToList();
 
-        int totalChargers = all.Count;
-        int onlineChargers = all.Count(s => s.IsConnected);
+        var totalChargers = all.Count;
+        var onlineChargers = all.Count(s => s.IsConnected);
 
         // Flatten every connector across all chargers
-        List<ConnectorSnapshot> allConnectors = all
+        var allConnectors = all
             .SelectMany(s => s.Connectors)
             .ToList();
 
         // Count connectors by OCPP status
-        Dictionary<string, int> connectorsByStatus = _knownConnectorStatuses
+        var connectorsByStatus = _knownConnectorStatuses
             .Concat(["Unknown"])
             .ToDictionary(status => status, _ => 0);
 
-        foreach (ConnectorSnapshot c in allConnectors)
+        foreach (var c in allConnectors)
         {
-            string key = connectorsByStatus.ContainsKey(c.Status) ? c.Status : "Unknown";
+            var key = connectorsByStatus.ContainsKey(c.Status) ? c.Status : "Unknown";
             connectorsByStatus[key]++;
         }
 
@@ -83,15 +83,15 @@ public class DashboardController : ControllerBase
         decimal totalPowerDrawKw = 0;
         decimal totalEnergyDeliveredKwh = 0;
 
-        foreach (ChargerSnapshot charger in all)
+        foreach (var charger in all)
         {
-            foreach (ConnectorMeasurementsSnapshot measurements in charger.Connectors
+            foreach (var measurements in charger.Connectors
                          .Select(connector => connector.Measurements)
                          .OfType<ConnectorMeasurementsSnapshot>())
             {
                 if (measurements.ImportedPower?.AsDecimal() is { } power)
                 {
-                    string unit = measurements.ImportedPower.Unit ?? "W";
+                    var unit = measurements.ImportedPower.Unit ?? "W";
                     totalPowerDrawKw += unit.Equals("kW", StringComparison.OrdinalIgnoreCase)
                         ? power
                         : power / 1000m;
@@ -99,7 +99,7 @@ public class DashboardController : ControllerBase
 
                 if (measurements.ImportedEnergy?.AsDecimal() is { } energy)
                 {
-                    string unit = measurements.ImportedEnergy.Unit ?? "Wh";
+                    var unit = measurements.ImportedEnergy.Unit ?? "Wh";
                     totalEnergyDeliveredKwh += unit.Equals("kWh", StringComparison.OrdinalIgnoreCase)
                         ? energy
                         : energy / 1000m;

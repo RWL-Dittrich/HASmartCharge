@@ -29,10 +29,10 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
         baseUrl = baseUrl.TrimEnd('/');
 
         // Generate cryptographically secure random state
-        string state = GenerateSecureState();
+        var state = GenerateSecureState();
 
         // Store the state
-        AuthState authState = new AuthState
+        var authState = new AuthState
         {
             State = state,
             BaseUrl = baseUrl,
@@ -43,7 +43,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
         _authStateStore.StoreState(authState);
 
         // Build the authorization URL
-        string authUrl = $"{baseUrl}/auth/authorize?" +
+        var authUrl = $"{baseUrl}/auth/authorize?" +
                       $"client_id={Uri.EscapeDataString(clientId)}&" +
                       $"redirect_uri={Uri.EscapeDataString(redirectUri)}&" +
                       $"state={Uri.EscapeDataString(state)}";
@@ -56,7 +56,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
 
     public bool ValidateAndStoreAuthorizationCode(string state, string authorizationCode)
     {
-        AuthState? authState = _authStateStore.GetState(state);
+        var authState = _authStateStore.GetState(state);
 
         if (authState == null)
         {
@@ -64,7 +64,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
             return false;
         }
 
-        bool success = _authStateStore.UpdateAuthorizationCode(state, authorizationCode);
+        var success = _authStateStore.UpdateAuthorizationCode(state, authorizationCode);
 
         if (success)
         {
@@ -76,7 +76,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
 
     public string? GetAuthorizationCode(string state)
     {
-        AuthState? authState = _authStateStore.GetState(state);
+        var authState = _authStateStore.GetState(state);
         return authState?.AuthorizationCode;
     }
 
@@ -87,7 +87,7 @@ public class HomeAssistantAuthService : IHomeAssistantAuthService
 
     private static string GenerateSecureState()
     {
-        byte[] bytes = new byte[32];
+        var bytes = new byte[32];
         RandomNumberGenerator.Fill(bytes);
         return Convert.ToBase64String(bytes)
             .Replace("+", "-")

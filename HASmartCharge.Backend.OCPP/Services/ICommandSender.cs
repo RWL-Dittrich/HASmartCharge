@@ -29,7 +29,7 @@ public class SessionCommandSender : ICommandSender
         TRequest request,
         CancellationToken cancellationToken = default)
     {
-        IChargePointSession? session = _sessionManager.GetByChargePointId(chargePointId);
+        var session = _sessionManager.GetByChargePointId(chargePointId);
         if (session == null)
         {
             return OcppCommandResult.FromCallError("NotConnected", $"Charge point '{chargePointId}' is not connected");

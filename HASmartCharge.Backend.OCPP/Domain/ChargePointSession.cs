@@ -126,7 +126,7 @@ public class ChargePointSession : IChargePointSession
         _logger.LogDebug("[{ChargePointId}] Received CallResult for message {MessageId}",
             ChargePointId, messageId);
 
-        if (_pendingCommands.TryRemove(messageId, out TaskCompletionSource<OcppCommandResult>? tcs))
+        if (_pendingCommands.TryRemove(messageId, out var tcs))
         {
             tcs.TrySetResult(OcppCommandResult.FromCallResult(payload));
         }
@@ -140,14 +140,14 @@ public class ChargePointSession : IChargePointSession
         JsonElement payload,
         CancellationToken cancellationToken = default)
     {
-        string? errorDescription = payload.ValueKind == JsonValueKind.String
+        var errorDescription = payload.ValueKind == JsonValueKind.String
             ? payload.GetString()
             : null;
 
         _logger.LogWarning("[{ChargePointId}] Received CallError for message {MessageId}: {ErrorCode}",
             ChargePointId, messageId, errorCode);
 
-        if (_pendingCommands.TryRemove(messageId, out TaskCompletionSource<OcppCommandResult>? tcs))
+        if (_pendingCommands.TryRemove(messageId, out var tcs))
         {
             tcs.TrySetResult(OcppCommandResult.FromCallError(errorCode, errorDescription));
         }
@@ -159,7 +159,7 @@ public class ChargePointSession : IChargePointSession
 
     private async Task<object> HandleBootNotificationAsync(JsonElement payload, CancellationToken cancellationToken)
     {
-        BootNotificationRequest? request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
 
         _logger.LogInformation("[{ChargePointId}] BootNotification: Vendor={Vendor}, Model={Model}, Serial={Serial}",
             ChargePointId,
@@ -169,10 +169,10 @@ public class ChargePointSession : IChargePointSession
 
         if (request != null)
         {
-            string vendor = request.ChargePointVendor ?? "";
-            string model = request.ChargePointModel ?? "";
-            string? serial = request.ChargePointSerialNumber;
-            string? firmware = request.FirmwareVersion;
+            var vendor = request.ChargePointVendor ?? "";
+            var model = request.ChargePointModel ?? "";
+            var serial = request.ChargePointSerialNumber;
+            var firmware = request.FirmwareVersion;
 
             // Persist via application command handler (TASK-017)
             try
@@ -190,7 +190,7 @@ public class ChargePointSession : IChargePointSession
                 ChargePointId, vendor, model, serial, firmware, DateTimeOffset.UtcNow), cancellationToken);
         }
 
-        BootNotificationResponse response = new BootNotificationResponse
+        var response = new BootNotificationResponse
         {
             Status = "Accepted",
             CurrentTime = DateTime.UtcNow,
@@ -204,7 +204,7 @@ public class ChargePointSession : IChargePointSession
     {
         _logger.LogDebug("[{ChargePointId}] Heartbeat received", ChargePointId);
 
-        HeartbeatResponse response = new HeartbeatResponse
+        var response = new HeartbeatResponse
         {
             CurrentTime = DateTime.UtcNow
         };
@@ -214,12 +214,12 @@ public class ChargePointSession : IChargePointSession
 
     private Task<object> HandleAuthorizeAsync(JsonElement payload)
     {
-        AuthorizeRequest? request = JsonSerializer.Deserialize<AuthorizeRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<AuthorizeRequest>(payload.GetRawText());
 
         _logger.LogInformation("[{ChargePointId}] Authorize: IdTag={IdTag}",
             ChargePointId, request?.IdTag);
 
-        AuthorizeResponse response = new AuthorizeResponse
+        var response = new AuthorizeResponse
         {
             IdTagInfo = new IdTagInfo
             {
@@ -233,7 +233,7 @@ public class ChargePointSession : IChargePointSession
 
     private async Task<object> HandleStartTransactionAsync(JsonElement payload, CancellationToken cancellationToken)
     {
-        StartTransactionRequest? request = JsonSerializer.Deserialize<StartTransactionRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<StartTransactionRequest>(payload.GetRawText());
 
         if (request is null)
         {
@@ -275,7 +275,7 @@ public class ChargePointSession : IChargePointSession
             transactionId, ChargePointId, request.ConnectorId, request.IdTag,
             request.MeterStart, DateTimeOffset.UtcNow), cancellationToken);
 
-        StartTransactionResponse response = new StartTransactionResponse
+        var response = new StartTransactionResponse
         {
             TransactionId = transactionId,
             IdTagInfo = new IdTagInfo
@@ -290,7 +290,7 @@ public class ChargePointSession : IChargePointSession
 
     private async Task<object> HandleStopTransactionAsync(JsonElement payload, CancellationToken cancellationToken)
     {
-        StopTransactionRequest? request = JsonSerializer.Deserialize<StopTransactionRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<StopTransactionRequest>(payload.GetRawText());
 
         _logger.LogInformation(
             "[{ChargePointId}] StopTransaction: TransactionId={TransactionId}, IdTag={IdTag}, MeterStop={MeterStop}, Reason={Reason}",
@@ -324,7 +324,7 @@ public class ChargePointSession : IChargePointSession
                 request.MeterStop, request.Reason, DateTimeOffset.UtcNow), cancellationToken);
         }
 
-        StopTransactionResponse response = new StopTransactionResponse
+        var response = new StopTransactionResponse
         {
             IdTagInfo = new IdTagInfo
             {
@@ -337,7 +337,7 @@ public class ChargePointSession : IChargePointSession
 
     private Task<object> HandleMeterValuesAsync(JsonElement payload)
     {
-        MeterValuesRequest? request = JsonSerializer.Deserialize<MeterValuesRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<MeterValuesRequest>(payload.GetRawText());
 
         if (request != null)
         {
@@ -350,12 +350,12 @@ public class ChargePointSession : IChargePointSession
 
             if (request.MeterValue != null)
             {
-                foreach (MeterValue meterValue in request.MeterValue)
+                foreach (var meterValue in request.MeterValue)
                 {
-                    foreach (SampledValue sampledValue in meterValue.SampledValue)
+                    foreach (var sampledValue in meterValue.SampledValue)
                     {
-                        string measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
-                        string phase = sampledValue.Phase != null ? $" (Phase: {sampledValue.Phase})" : "";
+                        var measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
+                        var phase = sampledValue.Phase != null ? $" (Phase: {sampledValue.Phase})" : "";
                         _logger.LogDebug("[{ChargePointId}] Measurand: {Measurand}{Phase} = {Value} {Unit}",
                             ChargePointId, measurand, phase, sampledValue.Value, sampledValue.Unit ?? "");
                     }
@@ -366,13 +366,13 @@ public class ChargePointSession : IChargePointSession
             // A MeterValuesReported domain event could be dispatched here in a future iteration
         }
 
-        MeterValuesResponse response = new MeterValuesResponse();
+        var response = new MeterValuesResponse();
         return Task.FromResult<object>(response);
     }
 
     private async Task<object> HandleStatusNotificationAsync(JsonElement payload, CancellationToken cancellationToken)
     {
-        StatusNotificationRequest? request = JsonSerializer.Deserialize<StatusNotificationRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<StatusNotificationRequest>(payload.GetRawText());
 
         _logger.LogInformation(
             "[{ChargePointId}] StatusNotification: Connector={Connector}, Status={Status}, ErrorCode={ErrorCode}",
@@ -405,20 +405,20 @@ public class ChargePointSession : IChargePointSession
                 request.ErrorCode, DateTimeOffset.UtcNow), cancellationToken);
         }
 
-        StatusNotificationResponse response = new StatusNotificationResponse();
+        var response = new StatusNotificationResponse();
         return response;
     }
 
     private Task<object> HandleDataTransferAsync(JsonElement payload)
     {
-        DataTransferRequest? request = JsonSerializer.Deserialize<DataTransferRequest>(payload.GetRawText());
+        var request = JsonSerializer.Deserialize<DataTransferRequest>(payload.GetRawText());
 
         _logger.LogInformation("[{ChargePointId}] DataTransfer: VendorId={VendorId}, MessageId={MessageId}",
             ChargePointId,
             request?.VendorId,
             request?.MessageId);
 
-        DataTransferResponse response = new DataTransferResponse
+        var response = new DataTransferResponse
         {
             Status = "Accepted"
         };
@@ -428,25 +428,25 @@ public class ChargePointSession : IChargePointSession
 
     private Task<object> HandleDiagnosticsStatusNotificationAsync(JsonElement payload)
     {
-        DiagnosticsStatusNotificationRequest? request =
+        var request =
             JsonSerializer.Deserialize<DiagnosticsStatusNotificationRequest>(payload.GetRawText());
 
         _logger.LogInformation("[{ChargePointId}] DiagnosticsStatusNotification: Status={Status}",
             ChargePointId, request?.Status);
 
-        DiagnosticsStatusNotificationResponse response = new DiagnosticsStatusNotificationResponse();
+        var response = new DiagnosticsStatusNotificationResponse();
         return Task.FromResult<object>(response);
     }
 
     private Task<object> HandleFirmwareStatusNotificationAsync(JsonElement payload)
     {
-        FirmwareStatusNotificationRequest? request =
+        var request =
             JsonSerializer.Deserialize<FirmwareStatusNotificationRequest>(payload.GetRawText());
 
         _logger.LogInformation("[{ChargePointId}] FirmwareStatusNotification: Status={Status}",
             ChargePointId, request?.Status);
 
-        FirmwareStatusNotificationResponse response = new FirmwareStatusNotificationResponse();
+        var response = new FirmwareStatusNotificationResponse();
         return Task.FromResult<object>(response);
     }
 
@@ -465,7 +465,7 @@ public class ChargePointSession : IChargePointSession
             return OcppCommandResult.FromCallError("ConnectionError", "Connection is not active");
         }
 
-        string messageId = string.Empty;
+        var messageId = string.Empty;
         TaskCompletionSource<OcppCommandResult> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         await _sendLock.WaitAsync(cancellationToken);
@@ -473,7 +473,7 @@ public class ChargePointSession : IChargePointSession
         {
             messageId = Interlocked.Increment(ref _messageIdCounter).ToString();
 
-            OcppMessage message = new OcppMessage
+            var message = new OcppMessage
             {
                 MessageType = (int)OcppMessageType.Call,
                 MessageId = messageId,
@@ -481,7 +481,7 @@ public class ChargePointSession : IChargePointSession
                 Payload = JsonSerializer.SerializeToElement(request)
             };
 
-            string messageJson = message.ToJson();
+            var messageJson = message.ToJson();
 
             _logger.LogInformation("[{ChargePointId}] Sending {Action} command: {Message}",
                 ChargePointId, action, messageJson);
@@ -503,7 +503,7 @@ public class ChargePointSession : IChargePointSession
 
         // Await the charger's response with a timeout
         using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(30));
-        using CancellationTokenSource linkedCts =
+        using var linkedCts =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
         try
@@ -524,7 +524,7 @@ public class ChargePointSession : IChargePointSession
         bool available,
         CancellationToken cancellationToken = default)
     {
-        ChangeAvailabilityRequest request = new ChangeAvailabilityRequest
+        var request = new ChangeAvailabilityRequest
         {
             ConnectorId = connectorId,
             Type = available ? "Operative" : "Inoperative"
@@ -538,7 +538,7 @@ public class ChargePointSession : IChargePointSession
         string idTag,
         CancellationToken cancellationToken = default)
     {
-        RemoteStartTransactionRequest request = new RemoteStartTransactionRequest
+        var request = new RemoteStartTransactionRequest
         {
             ConnectorId = connectorId,
             IdTag = idTag
@@ -551,7 +551,7 @@ public class ChargePointSession : IChargePointSession
         int transactionId,
         CancellationToken cancellationToken = default)
     {
-        RemoteStopTransactionRequest request = new RemoteStopTransactionRequest
+        var request = new RemoteStopTransactionRequest
         {
             TransactionId = transactionId
         };
@@ -564,7 +564,7 @@ public class ChargePointSession : IChargePointSession
         string value,
         CancellationToken cancellationToken = default)
     {
-        ChangeConfigurationRequest request = new ChangeConfigurationRequest
+        var request = new ChangeConfigurationRequest
         {
             Key = key,
             Value = value
@@ -575,12 +575,12 @@ public class ChargePointSession : IChargePointSession
 
     private async Task<bool> TriggerBootNotificationAsync(CancellationToken cancellationToken = default)
     {
-        TriggerMessageRequest request = new TriggerMessageRequest
+        var request = new TriggerMessageRequest
         {
             RequestedMessage = "BootNotification"
         };
 
-        OcppCommandResult result = await SendCommandAsync("TriggerMessage", request, cancellationToken);
+        var result = await SendCommandAsync("TriggerMessage", request, cancellationToken);
         return result.Success;
     }
 

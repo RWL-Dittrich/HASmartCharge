@@ -143,7 +143,7 @@ public class MeasurandValue
     public decimal? AsDecimal()
     {
         if (decimal.TryParse(Value, System.Globalization.NumberStyles.Any, 
-            System.Globalization.CultureInfo.InvariantCulture, out decimal result))
+            System.Globalization.CultureInfo.InvariantCulture, out var result))
         {
             return result;
         }
@@ -155,7 +155,7 @@ public class MeasurandValue
     /// </summary>
     public int? AsInt()
     {
-        if (int.TryParse(Value, out int result))
+        if (int.TryParse(Value, out var result))
         {
             return result;
         }

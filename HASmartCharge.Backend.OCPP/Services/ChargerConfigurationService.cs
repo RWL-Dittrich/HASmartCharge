@@ -38,7 +38,7 @@ public class ChargerConfigurationService
 
         // Configure which measurands to include in MeterValues
         // This is the key to getting power data!
-        string measurands = "Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC,Voltage.L1,Voltage.L2,Voltage.L3";
+        var measurands = "Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC,Voltage.L1,Voltage.L2,Voltage.L3";
         await SetConfigurationAsync(chargePointId, "MeterValuesSampledData", measurands, cancellationToken);
 
         // Also configure sampled data for transactions (during charging)
@@ -58,7 +58,7 @@ public class ChargerConfigurationService
         try
         {
             // Request configuration for meter values related keys
-            List<string> keys = new List<string>
+            var keys = new List<string>
             {
                 "MeterValueSampleInterval",
                 "MeterValuesSampledData",
@@ -67,9 +67,9 @@ public class ChargerConfigurationService
                 "StopTxnSampledData"
             };
 
-            GetConfigurationRequest request = new GetConfigurationRequest { Key = keys };
+            var request = new GetConfigurationRequest { Key = keys };
             
-            bool success = (await _commandSender.SendCommandAsync(
+            var success = (await _commandSender.SendCommandAsync(
                 chargePointId, 
                 "GetConfiguration", 
                 request, 
@@ -101,13 +101,13 @@ public class ChargerConfigurationService
     {
         try
         {
-            ChangeConfigurationRequest request = new ChangeConfigurationRequest
+            var request = new ChangeConfigurationRequest
             {
                 Key = key,
                 Value = value
             };
 
-            bool success = (await _commandSender.SendCommandAsync(
+            var success = (await _commandSender.SendCommandAsync(
                 chargePointId, 
                 "ChangeConfiguration", 
                 request, 
@@ -143,7 +143,7 @@ public class ChargerConfigurationService
         // Just set the most important ones
         await SetConfigurationAsync(chargePointId, "MeterValueSampleInterval", "10", cancellationToken);
         
-        string measurands = "Power.Active.Import,Current.Import,Voltage";
+        var measurands = "Power.Active.Import,Current.Import,Voltage";
         await SetConfigurationAsync(chargePointId, "MeterValuesSampledData", measurands, cancellationToken);
 
         _logger.LogInformation("[{ChargePointId}] Minimal charger configuration completed", chargePointId);

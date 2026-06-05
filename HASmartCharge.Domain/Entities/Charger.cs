@@ -23,7 +23,7 @@ public sealed class Charger
 
     public static Charger Register(string chargePointId, string vendor, string model, string? serialNumber, string? firmwareVersion)
     {
-        Charger charger = new Charger
+        var charger = new Charger
         {
             ChargePointId = chargePointId,
             Vendor = vendor,
@@ -60,10 +60,10 @@ public sealed class Charger
 
     public Connector AddOrUpdateConnector(int connectorId, string status, string? errorCode)
     {
-        Connector? existing = _connectors.FirstOrDefault(c => c.ConnectorId == connectorId);
+        var existing = _connectors.FirstOrDefault(c => c.ConnectorId == connectorId);
         if (existing is null)
         {
-            Connector connector = new Connector(ChargePointId, connectorId, status, errorCode);
+            var connector = new Connector(ChargePointId, connectorId, status, errorCode);
             _connectors.Add(connector);
             return connector;
         }
@@ -86,7 +86,7 @@ public sealed class Charger
         DateTimeOffset registeredAt,
         IEnumerable<(int ConnectorId, string Status, string? ErrorCode)>? connectors = null)
     {
-        Charger charger = new Charger
+        var charger = new Charger
         {
             ChargePointId = chargePointId,
             Vendor = vendor,
@@ -99,7 +99,7 @@ public sealed class Charger
             RegisteredAt = registeredAt
         };
         if (connectors is not null)
-            foreach ((int id, string status, string? err) in connectors)
+            foreach ((var id, var status, var err) in connectors)
                 charger.AddOrUpdateConnector(id, status, err);
         return charger;
     }

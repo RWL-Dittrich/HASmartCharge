@@ -54,8 +54,8 @@ public class ChargerCommandsController : ControllerBase
 
         _logger.LogInformation("Sending Reset ({Type}) to {ChargerId}", request.Type, chargerId);
 
-        bool hardReset = request.Type == "Hard";
-        ChargerCommandResult result = await _chargerGateway.ResetChargerAsync(chargerId, hardReset);
+        var hardReset = request.Type == "Hard";
+        var result = await _chargerGateway.ResetChargerAsync(chargerId, hardReset);
         return GatewayResultToActionResult(result, new { chargerId, type = request.Type });
     }
 
@@ -71,7 +71,7 @@ public class ChargerCommandsController : ControllerBase
     {
         _logger.LogInformation("Sending ClearCache to {ChargerId}", chargerId);
 
-        ChargerCommandResult result = await _chargerGateway.ClearCacheAsync(chargerId);
+        var result = await _chargerGateway.ClearCacheAsync(chargerId);
         return GatewayResultToActionResult(result, new { chargerId });
     }
 
@@ -98,7 +98,7 @@ public class ChargerCommandsController : ControllerBase
             "Sending TriggerMessage ({RequestedMessage}, connector {ConnectorId}) to {ChargerId}",
             request.RequestedMessage, request.ConnectorId, chargerId);
 
-        ChargerCommandResult result = await _chargerGateway.TriggerMessageAsync(chargerId, request.RequestedMessage, request.ConnectorId);
+        var result = await _chargerGateway.TriggerMessageAsync(chargerId, request.RequestedMessage, request.ConnectorId);
         return GatewayResultToActionResult(result, new { chargerId, requestedMessage = request.RequestedMessage, connectorId = request.ConnectorId });
     }
 
@@ -120,7 +120,7 @@ public class ChargerCommandsController : ControllerBase
 
         _logger.LogInformation("Sending GetDiagnostics to {ChargerId}, location={Location}", chargerId, request.Location);
 
-        ChargerCommandResult result = await _chargerGateway.GetDiagnosticsAsync(chargerId, request.Location);
+        var result = await _chargerGateway.GetDiagnosticsAsync(chargerId, request.Location);
         return GatewayResultToActionResult(result, new { chargerId, location = request.Location });
     }
 
@@ -149,8 +149,8 @@ public class ChargerCommandsController : ControllerBase
             "Setting availability of {ChargerId} connector {ConnectorId} to {Type}",
             chargerId, connectorId, request.Type);
 
-        bool available = request.Type == "Operative";
-        ChargerCommandResult result = await _chargerGateway.SetConnectorAvailabilityAsync(chargerId, connectorId, available);
+        var available = request.Type == "Operative";
+        var result = await _chargerGateway.SetConnectorAvailabilityAsync(chargerId, connectorId, available);
         return GatewayResultToActionResult(result, new { chargerId, connectorId, type = request.Type });
     }
 
@@ -168,7 +168,7 @@ public class ChargerCommandsController : ControllerBase
     {
         _logger.LogInformation("Sending UnlockConnector to {ChargerId} connector {ConnectorId}", chargerId, connectorId);
 
-        ChargerCommandResult result = await _chargerGateway.UnlockConnectorAsync(chargerId, connectorId);
+        var result = await _chargerGateway.UnlockConnectorAsync(chargerId, connectorId);
         return GatewayResultToActionResult(result, new { chargerId, connectorId });
     }
 
@@ -193,7 +193,7 @@ public class ChargerCommandsController : ControllerBase
             "Sending RemoteStartTransaction to {ChargerId} connector {ConnectorId}, idTag={IdTag}",
             chargerId, connectorId, request.IdTag);
 
-        ChargerCommandResult result = await _chargerGateway.StartTransactionAsync(chargerId, connectorId, request.IdTag);
+        var result = await _chargerGateway.StartTransactionAsync(chargerId, connectorId, request.IdTag);
         return GatewayResultToActionResult(result, new { chargerId, connectorId, idTag = request.IdTag });
     }
 
@@ -214,7 +214,7 @@ public class ChargerCommandsController : ControllerBase
             "Sending RemoteStopTransaction to {ChargerId} connector {ConnectorId}, transactionId={TransactionId}",
             chargerId, connectorId, transactionId);
 
-        ChargerCommandResult result = await _chargerGateway.StopTransactionAsync(chargerId, transactionId);
+        var result = await _chargerGateway.StopTransactionAsync(chargerId, transactionId);
         return GatewayResultToActionResult(result, new { chargerId, connectorId, transactionId });
     }
 

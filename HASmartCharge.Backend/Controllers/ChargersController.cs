@@ -32,7 +32,7 @@ public class ChargersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetChargers([FromQuery] bool? connected = null)
     {
-        List<ChargerSnapshot> list = _chargerReadModel.GetChargers(connected).ToList();
+        var list = _chargerReadModel.GetChargers(connected).ToList();
 
         return Ok(new
         {
@@ -54,7 +54,7 @@ public class ChargersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetCharger([FromRoute] string chargerId)
     {
-        ChargerSnapshot? status = _chargerReadModel.GetCharger(chargerId);
+        var status = _chargerReadModel.GetCharger(chargerId);
         if (status == null)
             return NotFound(new { error = "Charger not found", chargerId });
 
@@ -73,11 +73,11 @@ public class ChargersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetConnectors([FromRoute] string chargerId)
     {
-        ChargerSnapshot? status = _chargerReadModel.GetCharger(chargerId);
+        var status = _chargerReadModel.GetCharger(chargerId);
         if (status == null)
             return NotFound(new { error = "Charger not found", chargerId });
 
-        List<object> connectors = status.Connectors
+        var connectors = status.Connectors
             .Select(MapConnectorDetail)
             .ToList();
 
@@ -92,11 +92,11 @@ public class ChargersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetConnector([FromRoute] string chargerId, [FromRoute] int connectorId)
     {
-        ChargerSnapshot? status = _chargerReadModel.GetCharger(chargerId);
+        var status = _chargerReadModel.GetCharger(chargerId);
         if (status == null)
             return NotFound(new { error = "Charger not found", chargerId });
 
-        ConnectorSnapshot? connector = status.Connectors.FirstOrDefault(c => c.ConnectorId == connectorId);
+        var connector = status.Connectors.FirstOrDefault(c => c.ConnectorId == connectorId);
         if (connector == null)
             return NotFound(new { error = "Connector not found", chargerId, connectorId });
 
@@ -118,7 +118,7 @@ public class ChargersController : ControllerBase
         if (_chargerReadModel.GetCharger(chargerId) == null)
             return NotFound(new { error = "Charger not found", chargerId });
 
-        List<object> transactions = _chargerReadModel.GetActiveChargingSessions(chargerId)
+        var transactions = _chargerReadModel.GetActiveChargingSessions(chargerId)
             .OrderBy(session => session.ConnectorId)
             .Select(session => (object)new
             {
