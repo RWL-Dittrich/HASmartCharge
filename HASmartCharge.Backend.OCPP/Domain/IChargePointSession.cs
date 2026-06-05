@@ -51,20 +51,10 @@ public interface IChargePointSession
     Task<OcppCommandResult> SendCommandAsync<TRequest>(string action, TRequest request, CancellationToken cancellationToken = default);
     
     /// <summary>
-    /// Set availability of a connector
+    /// Set availability of a connector (Operative / Inoperative)
     /// </summary>
     Task<OcppCommandResult> SetAvailabilityAsync(int connectorId, bool available, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Start a remote transaction
-    /// </summary>
-    Task<OcppCommandResult> RemoteStartTransactionAsync(int connectorId, string idTag, CancellationToken cancellationToken = default);
-    
-    /// <summary>
-    /// Stop a remote transaction
-    /// </summary>
-    Task<OcppCommandResult> RemoteStopTransactionAsync(int transactionId, CancellationToken cancellationToken = default);
-    
+
     /// <summary>
     /// Change configuration on the charge point
     /// </summary>

@@ -1,29 +1,25 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using HASmartCharge.Application.Commands;
-using HASmartCharge.Application.Events;
 using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Services;
 using HASmartCharge.Backend.OCPP.Transport;
-using HASmartCharge.Domain.Events;
 using Microsoft.Extensions.Logging;
 
 namespace HASmartCharge.Backend.OCPP.Domain;
 
 /// <summary>
-/// Represents a single connected charge point session
-/// Owns all charge point state, configuration, and OCPP message handling logic
+/// Represents a single connected charge point session.
+/// Owns OCPP message handling for one charger: auto-accepts all inbound
+/// transactions, forwards telemetry to <see cref="IChargerTelemetrySink"/>,
+/// and exposes a small outbound command surface (availability, configuration).
 /// </summary>
 public class ChargePointSession : IChargePointSession
 {
     private readonly ILogger<ChargePointSession> _logger;
-    private readonly IDomainEventDispatcher _dispatcher;
     private readonly ChargerConfigurationService _configurationService;
-    private readonly RegisterChargerHandler _registerChargerHandler;
-    private readonly BeginChargingSessionHandler _beginChargingSessionHandler;
-    private readonly CompleteChargingSessionHandler _completeChargingSessionHandler;
-    private readonly UpdateConnectorStatusHandler _updateConnectorStatusHandler;
+    private readonly IChargerTelemetrySink _telemetry;
     private int _messageIdCounter;
+    private int _transactionIdCounter = (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % 1_000_000);
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<OcppCommandResult>> _pendingCommands = new();
 
@@ -31,22 +27,14 @@ public class ChargePointSession : IChargePointSession
         string chargePointId,
         IConnection connection,
         ILogger<ChargePointSession> logger,
-        IDomainEventDispatcher dispatcher,
         ChargerConfigurationService configurationService,
-        RegisterChargerHandler registerChargerHandler,
-        BeginChargingSessionHandler beginChargingSessionHandler,
-        CompleteChargingSessionHandler completeChargingSessionHandler,
-        UpdateConnectorStatusHandler updateConnectorStatusHandler)
+        IChargerTelemetrySink telemetry)
     {
         ChargePointId = chargePointId ?? throw new ArgumentNullException(nameof(chargePointId));
         Connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
-        _registerChargerHandler = registerChargerHandler ?? throw new ArgumentNullException(nameof(registerChargerHandler));
-        _beginChargingSessionHandler = beginChargingSessionHandler ?? throw new ArgumentNullException(nameof(beginChargingSessionHandler));
-        _completeChargingSessionHandler = completeChargingSessionHandler ?? throw new ArgumentNullException(nameof(completeChargingSessionHandler));
-        _updateConnectorStatusHandler = updateConnectorStatusHandler ?? throw new ArgumentNullException(nameof(updateConnectorStatusHandler));
+        _telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
 
         ConnectedAt = DateTime.UtcNow;
         IsActive = true;
@@ -59,29 +47,25 @@ public class ChargePointSession : IChargePointSession
     public bool IsActive { get; private set; }
     public DateTime ConnectedAt { get; }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("[{ChargePointId}] Initializing session", ChargePointId);
 
-        // Dispatch connection event so the read model (tracker) is updated
-        await _dispatcher.DispatchAsync(new ChargerConnected(ChargePointId, DateTimeOffset.UtcNow), cancellationToken);
+        _telemetry.OnConnected(ChargePointId);
 
-        // Trigger BootNotification and configuration in background
-        // Note: Not awaited intentionally - initialization continues in parallel with message processing
-        // The session lifecycle is managed by the orchestrator, which keeps the session alive
+        // Trigger BootNotification + push configuration in the background so it runs
+        // in parallel with message processing. The orchestrator keeps the session alive.
         _ = InitializeInBackgroundAsync(cancellationToken);
+        return Task.CompletedTask;
     }
 
     private async Task InitializeInBackgroundAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // Small delay to ensure connection is stable
-            await Task.Delay(2000, cancellationToken);
-
+            await Task.Delay(2000, cancellationToken); // let the connection settle
             await TriggerBootNotificationAsync(cancellationToken);
 
-            // Configure charger after boot notification
             await Task.Delay(2000, cancellationToken);
             await _configurationService.ConfigureChargerAsync(ChargePointId, cancellationToken);
         }
@@ -95,247 +79,129 @@ public class ChargePointSession : IChargePointSession
         }
     }
 
-    public async Task<object> HandleCallAsync(
-        string action,
-        JsonElement payload,
-        CancellationToken cancellationToken = default)
+    public async Task<object> HandleCallAsync(string action, JsonElement payload, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("[{ChargePointId}] Handling action: {Action}", ChargePointId, action);
 
         return action switch
         {
-            "BootNotification" => await HandleBootNotificationAsync(payload, cancellationToken),
-            "Heartbeat" => await HandleHeartbeatAsync(payload),
-            "Authorize" => await HandleAuthorizeAsync(payload),
-            "StartTransaction" => await HandleStartTransactionAsync(payload, cancellationToken),
-            "StopTransaction" => await HandleStopTransactionAsync(payload, cancellationToken),
-            "MeterValues" => await HandleMeterValuesAsync(payload),
-            "StatusNotification" => await HandleStatusNotificationAsync(payload, cancellationToken),
-            "DataTransfer" => await HandleDataTransferAsync(payload),
-            "DiagnosticsStatusNotification" => await HandleDiagnosticsStatusNotificationAsync(payload),
-            "FirmwareStatusNotification" => await HandleFirmwareStatusNotificationAsync(payload),
+            "BootNotification" => HandleBootNotification(payload),
+            "Heartbeat" => HandleHeartbeat(),
+            "Authorize" => HandleAuthorize(payload),
+            "StartTransaction" => HandleStartTransaction(payload),
+            "StopTransaction" => HandleStopTransaction(payload),
+            "MeterValues" => HandleMeterValues(payload),
+            "StatusNotification" => HandleStatusNotification(payload),
+            "DataTransfer" => HandleDataTransfer(payload),
             _ => throw new NotSupportedException($"Action '{action}' is not supported")
         };
     }
 
-    public Task HandleCallResultAsync(
-        string messageId,
-        JsonElement payload,
-        CancellationToken cancellationToken = default)
+    public Task HandleCallResultAsync(string messageId, JsonElement payload, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("[{ChargePointId}] Received CallResult for message {MessageId}",
-            ChargePointId, messageId);
-
+        _logger.LogDebug("[{ChargePointId}] Received CallResult for message {MessageId}", ChargePointId, messageId);
         if (_pendingCommands.TryRemove(messageId, out var tcs))
-        {
             tcs.TrySetResult(OcppCommandResult.FromCallResult(payload));
-        }
-
         return Task.CompletedTask;
     }
 
-    public Task HandleCallErrorAsync(
-        string messageId,
-        string errorCode,
-        JsonElement payload,
-        CancellationToken cancellationToken = default)
+    public Task HandleCallErrorAsync(string messageId, string errorCode, JsonElement payload, CancellationToken cancellationToken = default)
     {
-        var errorDescription = payload.ValueKind == JsonValueKind.String
-            ? payload.GetString()
-            : null;
-
-        _logger.LogWarning("[{ChargePointId}] Received CallError for message {MessageId}: {ErrorCode}",
-            ChargePointId, messageId, errorCode);
-
+        var errorDescription = payload.ValueKind == JsonValueKind.String ? payload.GetString() : null;
+        _logger.LogWarning("[{ChargePointId}] Received CallError for message {MessageId}: {ErrorCode}", ChargePointId, messageId, errorCode);
         if (_pendingCommands.TryRemove(messageId, out var tcs))
-        {
             tcs.TrySetResult(OcppCommandResult.FromCallError(errorCode, errorDescription));
-        }
-
         return Task.CompletedTask;
     }
 
-    #region Inbound OCPP Handlers (CP -> CS)
+    #region Inbound OCPP Handlers (CP -> CS) — all auto-accepted
 
-    private async Task<object> HandleBootNotificationAsync(JsonElement payload, CancellationToken cancellationToken)
+    private object HandleBootNotification(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
 
         _logger.LogInformation("[{ChargePointId}] BootNotification: Vendor={Vendor}, Model={Model}, Serial={Serial}",
-            ChargePointId,
-            request?.ChargePointVendor,
-            request?.ChargePointModel,
-            request?.ChargePointSerialNumber);
+            ChargePointId, request?.ChargePointVendor, request?.ChargePointModel, request?.ChargePointSerialNumber);
 
         if (request != null)
         {
-            var vendor = request.ChargePointVendor ?? "";
-            var model = request.ChargePointModel ?? "";
-            var serial = request.ChargePointSerialNumber;
-            var firmware = request.FirmwareVersion;
-
-            // Persist via application command handler (TASK-017)
-            try
+            _telemetry.OnBoot(ChargePointId, new ChargerInfo
             {
-                await _registerChargerHandler.HandleAsync(new RegisterChargerCommand(
-                    ChargePointId, vendor, model, serial, firmware), cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[{ChargePointId}] Failed to persist boot notification", ChargePointId);
-            }
-
-            // Dispatch domain event so read model (tracker) is updated (TASK-022)
-            await _dispatcher.DispatchAsync(new ChargerRegistered(
-                ChargePointId, vendor, model, serial, firmware, DateTimeOffset.UtcNow), cancellationToken);
+                Vendor = request.ChargePointVendor,
+                Model = request.ChargePointModel,
+                SerialNumber = request.ChargePointSerialNumber,
+                FirmwareVersion = request.FirmwareVersion
+            });
         }
 
-        var response = new BootNotificationResponse
+        return new BootNotificationResponse
         {
             Status = "Accepted",
             CurrentTime = DateTime.UtcNow,
             Interval = 60
         };
-
-        return response;
     }
 
-    private Task<object> HandleHeartbeatAsync(JsonElement payload)
+    private object HandleHeartbeat()
     {
         _logger.LogDebug("[{ChargePointId}] Heartbeat received", ChargePointId);
-
-        var response = new HeartbeatResponse
-        {
-            CurrentTime = DateTime.UtcNow
-        };
-
-        return Task.FromResult<object>(response);
+        return new HeartbeatResponse { CurrentTime = DateTime.UtcNow };
     }
 
-    private Task<object> HandleAuthorizeAsync(JsonElement payload)
+    private object HandleAuthorize(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<AuthorizeRequest>(payload.GetRawText());
+        _logger.LogInformation("[{ChargePointId}] Authorize: IdTag={IdTag}", ChargePointId, request?.IdTag);
 
-        _logger.LogInformation("[{ChargePointId}] Authorize: IdTag={IdTag}",
-            ChargePointId, request?.IdTag);
-
-        var response = new AuthorizeResponse
+        // No id-tag whitelist — accept everything.
+        return new AuthorizeResponse
         {
-            IdTagInfo = new IdTagInfo
-            {
-                Status = "Accepted",
-                ExpiryDate = DateTime.UtcNow.AddHours(24)
-            }
+            IdTagInfo = new IdTagInfo { Status = "Accepted", ExpiryDate = DateTime.UtcNow.AddHours(24) }
         };
-
-        return Task.FromResult<object>(response);
     }
 
-    private async Task<object> HandleStartTransactionAsync(JsonElement payload, CancellationToken cancellationToken)
+    private object HandleStartTransaction(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<StartTransactionRequest>(payload.GetRawText());
-
         if (request is null)
-        {
-            return new StartTransactionResponse
-            {
-                TransactionId = 0,
-                IdTagInfo = new IdTagInfo { Status = "Invalid" }
-            };
-        }
+            return new StartTransactionResponse { TransactionId = 0, IdTagInfo = new IdTagInfo { Status = "Invalid" } };
 
-        // Get a stable transaction ID from the application layer (TASK-018)
-        int transactionId;
-        try
-        {
-            transactionId = await _beginChargingSessionHandler.HandleAsync(new BeginChargingSessionCommand(
-                ChargePointId,
-                request.ConnectorId,
-                request.IdTag,
-                request.MeterStart,
-                new DateTimeOffset(request.Timestamp, TimeSpan.Zero)), cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[{ChargePointId}] Failed to persist StartTransaction", ChargePointId);
-            // Fallback: still accept the transaction but log the error
-            transactionId = Environment.TickCount;
-        }
+        var transactionId = Interlocked.Increment(ref _transactionIdCounter);
 
         _logger.LogInformation(
             "[{ChargePointId}] StartTransaction: Connector={Connector}, IdTag={IdTag}, MeterStart={MeterStart}, TransactionId={TransactionId}",
-            ChargePointId,
-            request.ConnectorId,
-            request.IdTag,
-            request.MeterStart,
-            transactionId);
+            ChargePointId, request.ConnectorId, request.IdTag, request.MeterStart, transactionId);
 
-        // Dispatch domain event so read model (tracker) is updated (TASK-022)
-        await _dispatcher.DispatchAsync(new ChargingSessionStarted(
-            transactionId, ChargePointId, request.ConnectorId, request.IdTag,
-            request.MeterStart, DateTimeOffset.UtcNow), cancellationToken);
+        _telemetry.OnTransactionStarted(
+            ChargePointId, request.ConnectorId, transactionId, request.MeterStart, request.IdTag,
+            new DateTimeOffset(request.Timestamp, TimeSpan.Zero));
 
-        var response = new StartTransactionResponse
+        return new StartTransactionResponse
         {
             TransactionId = transactionId,
-            IdTagInfo = new IdTagInfo
-            {
-                Status = "Accepted",
-                ExpiryDate = DateTime.UtcNow.AddHours(24)
-            }
+            IdTagInfo = new IdTagInfo { Status = "Accepted", ExpiryDate = DateTime.UtcNow.AddHours(24) }
         };
-
-        return response;
     }
 
-    private async Task<object> HandleStopTransactionAsync(JsonElement payload, CancellationToken cancellationToken)
+    private object HandleStopTransaction(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<StopTransactionRequest>(payload.GetRawText());
 
         _logger.LogInformation(
             "[{ChargePointId}] StopTransaction: TransactionId={TransactionId}, IdTag={IdTag}, MeterStop={MeterStop}, Reason={Reason}",
-            ChargePointId,
-            request?.TransactionId,
-            request?.IdTag,
-            request?.MeterStop,
-            request?.Reason);
+            ChargePointId, request?.TransactionId, request?.IdTag, request?.MeterStop, request?.Reason);
 
         if (request != null)
         {
-            // Persist via application command handler (TASK-019)
-            try
-            {
-                await _completeChargingSessionHandler.HandleAsync(new CompleteChargingSessionCommand(
-                    request.TransactionId,
-                    request.MeterStop,
-                    request.Reason,
-                    new DateTimeOffset(request.Timestamp, TimeSpan.Zero)), cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[{ChargePointId}] Failed to persist StopTransaction {TransactionId}",
-                    ChargePointId, request.TransactionId);
-            }
-
-            // Dispatch domain event so read model (tracker) is updated (TASK-022)
-            // ConnectorId is not in StopTransactionRequest; pass 0 as approximation
-            await _dispatcher.DispatchAsync(new ChargingSessionCompleted(
-                request.TransactionId, ChargePointId, 0,
-                request.MeterStop, request.Reason, DateTimeOffset.UtcNow), cancellationToken);
+            _telemetry.OnTransactionStopped(
+                ChargePointId, request.TransactionId, request.MeterStop, request.Reason,
+                new DateTimeOffset(request.Timestamp, TimeSpan.Zero));
         }
 
-        var response = new StopTransactionResponse
-        {
-            IdTagInfo = new IdTagInfo
-            {
-                Status = "Accepted"
-            }
-        };
-
-        return response;
+        return new StopTransactionResponse { IdTagInfo = new IdTagInfo { Status = "Accepted" } };
     }
 
-    private Task<object> HandleMeterValuesAsync(JsonElement payload)
+    private object HandleMeterValues(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<MeterValuesRequest>(payload.GetRawText());
 
@@ -343,121 +209,41 @@ public class ChargePointSession : IChargePointSession
         {
             _logger.LogInformation(
                 "[{ChargePointId}] MeterValues: Connector={Connector}, TransactionId={TransactionId}, Values={ValueCount}",
-                ChargePointId,
-                request.ConnectorId,
-                request.TransactionId,
-                request.MeterValue?.Count ?? 0);
+                ChargePointId, request.ConnectorId, request.TransactionId, request.MeterValue?.Count ?? 0);
 
-            if (request.MeterValue != null)
-            {
-                foreach (var meterValue in request.MeterValue)
-                {
-                    foreach (var sampledValue in meterValue.SampledValue)
-                    {
-                        var measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
-                        var phase = sampledValue.Phase != null ? $" (Phase: {sampledValue.Phase})" : "";
-                        _logger.LogDebug("[{ChargePointId}] Measurand: {Measurand}{Phase} = {Value} {Unit}",
-                            ChargePointId, measurand, phase, sampledValue.Value, sampledValue.Unit ?? "");
-                    }
-                }
-            }
-
-            // Meter values go directly to the tracker for now (TASK-021/022 stretch goal)
-            // A MeterValuesReported domain event could be dispatched here in a future iteration
+            _telemetry.OnMeterValues(ChargePointId, request);
         }
 
-        var response = new MeterValuesResponse();
-        return Task.FromResult<object>(response);
+        return new MeterValuesResponse();
     }
 
-    private async Task<object> HandleStatusNotificationAsync(JsonElement payload, CancellationToken cancellationToken)
+    private object HandleStatusNotification(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<StatusNotificationRequest>(payload.GetRawText());
 
         _logger.LogInformation(
             "[{ChargePointId}] StatusNotification: Connector={Connector}, Status={Status}, ErrorCode={ErrorCode}",
-            ChargePointId,
-            request?.ConnectorId,
-            request?.Status,
-            request?.ErrorCode);
+            ChargePointId, request?.ConnectorId, request?.Status, request?.ErrorCode);
 
         if (request != null)
-        {
-            // Persist connector to DB via application command (only real connectors, not connector 0 which is the charger itself)
-            // (TASK-020)
-            if (request.ConnectorId > 0)
-            {
-                try
-                {
-                    await _updateConnectorStatusHandler.HandleAsync(new UpdateConnectorStatusCommand(
-                        ChargePointId, request.ConnectorId, request.Status ?? "Unknown", request.ErrorCode), cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[{ChargePointId}] Failed to persist connector {ConnectorId} status",
-                        ChargePointId, request.ConnectorId);
-                }
-            }
+            _telemetry.OnConnectorStatus(ChargePointId, request.ConnectorId, request.Status ?? "Unknown", request.ErrorCode);
 
-            // Dispatch domain event so read model (tracker) is updated (TASK-022)
-            await _dispatcher.DispatchAsync(new ConnectorStatusUpdated(
-                ChargePointId, request.ConnectorId, request.Status ?? "Unknown",
-                request.ErrorCode, DateTimeOffset.UtcNow), cancellationToken);
-        }
-
-        var response = new StatusNotificationResponse();
-        return response;
+        return new StatusNotificationResponse();
     }
 
-    private Task<object> HandleDataTransferAsync(JsonElement payload)
+    private object HandleDataTransfer(JsonElement payload)
     {
         var request = JsonSerializer.Deserialize<DataTransferRequest>(payload.GetRawText());
-
         _logger.LogInformation("[{ChargePointId}] DataTransfer: VendorId={VendorId}, MessageId={MessageId}",
-            ChargePointId,
-            request?.VendorId,
-            request?.MessageId);
-
-        var response = new DataTransferResponse
-        {
-            Status = "Accepted"
-        };
-
-        return Task.FromResult<object>(response);
-    }
-
-    private Task<object> HandleDiagnosticsStatusNotificationAsync(JsonElement payload)
-    {
-        var request =
-            JsonSerializer.Deserialize<DiagnosticsStatusNotificationRequest>(payload.GetRawText());
-
-        _logger.LogInformation("[{ChargePointId}] DiagnosticsStatusNotification: Status={Status}",
-            ChargePointId, request?.Status);
-
-        var response = new DiagnosticsStatusNotificationResponse();
-        return Task.FromResult<object>(response);
-    }
-
-    private Task<object> HandleFirmwareStatusNotificationAsync(JsonElement payload)
-    {
-        var request =
-            JsonSerializer.Deserialize<FirmwareStatusNotificationRequest>(payload.GetRawText());
-
-        _logger.LogInformation("[{ChargePointId}] FirmwareStatusNotification: Status={Status}",
-            ChargePointId, request?.Status);
-
-        var response = new FirmwareStatusNotificationResponse();
-        return Task.FromResult<object>(response);
+            ChargePointId, request?.VendorId, request?.MessageId);
+        return new DataTransferResponse { Status = "Accepted" };
     }
 
     #endregion
 
     #region Outbound Commands (CS -> CP)
 
-    public async Task<OcppCommandResult> SendCommandAsync<TRequest>(
-        string action,
-        TRequest request,
-        CancellationToken cancellationToken = default)
+    public async Task<OcppCommandResult> SendCommandAsync<TRequest>(string action, TRequest request, CancellationToken cancellationToken = default)
     {
         if (!IsActive || !Connection.IsOpen)
         {
@@ -482,12 +268,9 @@ public class ChargePointSession : IChargePointSession
             };
 
             var messageJson = message.ToJson();
-
-            _logger.LogInformation("[{ChargePointId}] Sending {Action} command: {Message}",
-                ChargePointId, action, messageJson);
+            _logger.LogInformation("[{ChargePointId}] Sending {Action} command: {Message}", ChargePointId, action, messageJson);
 
             _pendingCommands[messageId] = tcs;
-
             await Connection.SendAsync(messageJson, cancellationToken);
         }
         catch (Exception ex)
@@ -501,10 +284,8 @@ public class ChargePointSession : IChargePointSession
             _sendLock.Release();
         }
 
-        // Await the charger's response with a timeout
         using CancellationTokenSource timeoutCts = new(TimeSpan.FromSeconds(30));
-        using var linkedCts =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
         try
         {
@@ -513,74 +294,24 @@ public class ChargePointSession : IChargePointSession
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
             _pendingCommands.TryRemove(messageId, out _);
-            _logger.LogWarning("[{ChargePointId}] Command {Action} timed out (message {MessageId})",
-                ChargePointId, action, messageId);
+            _logger.LogWarning("[{ChargePointId}] Command {Action} timed out (message {MessageId})", ChargePointId, action, messageId);
             return OcppCommandResult.TimedOut();
         }
     }
 
-    public async Task<OcppCommandResult> SetAvailabilityAsync(
-        int connectorId,
-        bool available,
-        CancellationToken cancellationToken = default)
-    {
-        var request = new ChangeAvailabilityRequest
+    public Task<OcppCommandResult> SetAvailabilityAsync(int connectorId, bool available, CancellationToken cancellationToken = default) =>
+        SendCommandAsync("ChangeAvailability", new ChangeAvailabilityRequest
         {
             ConnectorId = connectorId,
             Type = available ? "Operative" : "Inoperative"
-        };
+        }, cancellationToken);
 
-        return await SendCommandAsync("ChangeAvailability", request, cancellationToken);
-    }
-
-    public async Task<OcppCommandResult> RemoteStartTransactionAsync(
-        int connectorId,
-        string idTag,
-        CancellationToken cancellationToken = default)
-    {
-        var request = new RemoteStartTransactionRequest
-        {
-            ConnectorId = connectorId,
-            IdTag = idTag
-        };
-
-        return await SendCommandAsync("RemoteStartTransaction", request, cancellationToken);
-    }
-
-    public async Task<OcppCommandResult> RemoteStopTransactionAsync(
-        int transactionId,
-        CancellationToken cancellationToken = default)
-    {
-        var request = new RemoteStopTransactionRequest
-        {
-            TransactionId = transactionId
-        };
-
-        return await SendCommandAsync("RemoteStopTransaction", request, cancellationToken);
-    }
-
-    public async Task<OcppCommandResult> ChangeConfigurationAsync(
-        string key,
-        string value,
-        CancellationToken cancellationToken = default)
-    {
-        var request = new ChangeConfigurationRequest
-        {
-            Key = key,
-            Value = value
-        };
-
-        return await SendCommandAsync("ChangeConfiguration", request, cancellationToken);
-    }
+    public Task<OcppCommandResult> ChangeConfigurationAsync(string key, string value, CancellationToken cancellationToken = default) =>
+        SendCommandAsync("ChangeConfiguration", new ChangeConfigurationRequest { Key = key, Value = value }, cancellationToken);
 
     private async Task<bool> TriggerBootNotificationAsync(CancellationToken cancellationToken = default)
     {
-        var request = new TriggerMessageRequest
-        {
-            RequestedMessage = "BootNotification"
-        };
-
-        var result = await SendCommandAsync("TriggerMessage", request, cancellationToken);
+        var result = await SendCommandAsync("TriggerMessage", new TriggerMessageRequest { RequestedMessage = "BootNotification" }, cancellationToken);
         return result.Success;
     }
 
@@ -589,11 +320,8 @@ public class ChargePointSession : IChargePointSession
     public async Task DisposeAsync()
     {
         _logger.LogInformation("[{ChargePointId}] Disposing session", ChargePointId);
-
         IsActive = false;
-
-        // Dispatch disconnection event so the read model (tracker) is updated
-        await _dispatcher.DispatchAsync(new ChargerDisconnected(ChargePointId, DateTimeOffset.UtcNow));
+        _telemetry.OnDisconnected(ChargePointId);
 
         try
         {

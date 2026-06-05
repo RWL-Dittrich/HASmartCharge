@@ -1,25 +1,16 @@
 using System.Collections.Concurrent;
 using System.Globalization;
-using HASmartCharge.Application.Events;
-using HASmartCharge.Application.Interfaces;
-using HASmartCharge.Application.Queries.Models;
 using HASmartCharge.Backend.OCPP.Models;
-using HASmartCharge.Domain.Events;
 using Microsoft.Extensions.Logging;
 
 namespace HASmartCharge.Backend.OCPP.Services;
 
 /// <summary>
-/// Service that tracks the status and measurands of all connected chargers.
-/// Implements domain event handlers directly to keep OCPP model types out of this class.
+/// Tracks the live status and measurands of connected chargers in memory.
+/// Fed by the OCPP session layer via <see cref="IChargerTelemetrySink"/>.
+/// Pure read model — no persistence, no domain events.
 /// </summary>
-public class ChargerStatusTracker : IChargerReadModel,
-    IDomainEventHandler<ChargerConnected>,
-    IDomainEventHandler<ChargerDisconnected>,
-    IDomainEventHandler<ChargerRegistered>,
-    IDomainEventHandler<ConnectorStatusUpdated>,
-    IDomainEventHandler<ChargingSessionStarted>,
-    IDomainEventHandler<ChargingSessionCompleted>
+public class ChargerStatusTracker : IChargerTelemetrySink
 {
     private readonly ConcurrentDictionary<string, ChargerStatus> _chargerStatuses = new();
     private readonly ILogger<ChargerStatusTracker> _logger;
@@ -29,237 +20,98 @@ public class ChargerStatusTracker : IChargerReadModel,
         _logger = logger;
     }
 
-    #region Startup Seeding
+    #region IChargerTelemetrySink
 
-    /// <summary>
-    /// Seed the in-memory tracker from domain charger entities.
-    /// Called once at startup so the API shows all known chargers (as disconnected)
-    /// before any WebSocket connections arrive.
-    /// </summary>
-    public void SeedFromDomainChargers(IReadOnlyList<HASmartCharge.Domain.Entities.Charger> chargers)
+    public void OnConnected(string chargePointId)
     {
-        var count = 0;
-        foreach (var charger in chargers)
-        {
-            var status = _chargerStatuses.GetOrAdd(charger.ChargePointId, id => new ChargerStatus
-            {
-                ChargePointId = id
-            });
-
-            // Mark as disconnected — a live WebSocket connect will flip this to true
-            status.IsConnected = false;
-            status.LastUpdated = charger.LastConnectedAt?.UtcDateTime ?? DateTime.UtcNow;
-            status.ConnectedAt = charger.LastConnectedAt?.UtcDateTime;
-
-            // Populate boot info if we have it
-            if (!string.IsNullOrEmpty(charger.Vendor) || !string.IsNullOrEmpty(charger.Model))
-            {
-                status.Info = new ChargerInfo
-                {
-                    Vendor = charger.Vendor,
-                    Model = charger.Model,
-                    SerialNumber = charger.SerialNumber,
-                    FirmwareVersion = charger.FirmwareVersion
-                };
-            }
-
-            // Populate connector statuses
-            foreach (var connector in charger.Connectors)
-            {
-                var connectorStatus = status.Connectors.GetOrAdd(connector.ConnectorId, id => new ConnectorStatus
-                {
-                    ConnectorId = id
-                });
-
-                connectorStatus.Status = connector.Status ?? "Unknown";
-                connectorStatus.ErrorCode = connector.ErrorCode ?? "NoError";
-            }
-
-            count++;
-        }
-
-        _logger.LogInformation("Seeded {Count} chargers from domain entities into status tracker", count);
-    }
-
-    #endregion
-
-    #region Domain Event Handlers — Connection Management
-
-    public Task HandleAsync(ChargerConnected evt, CancellationToken ct = default)
-    {
-        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
-        {
-            ChargePointId = id
-        });
-
+        var status = GetOrAdd(chargePointId);
         status.IsConnected = true;
         status.ConnectedAt = DateTime.UtcNow;
         status.DisconnectedAt = null;
         status.LastUpdated = DateTime.UtcNow;
-
-        _logger.LogInformation("Charger {ChargePointId} marked as connected", evt.ChargePointId);
-        return Task.CompletedTask;
+        _logger.LogInformation("Charger {ChargePointId} marked as connected", chargePointId);
     }
 
-    public Task HandleAsync(ChargerDisconnected evt, CancellationToken ct = default)
+    public void OnDisconnected(string chargePointId)
     {
-        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out var status))
+        if (_chargerStatuses.TryGetValue(chargePointId, out var status))
         {
             status.IsConnected = false;
             status.DisconnectedAt = DateTime.UtcNow;
             status.LastUpdated = DateTime.UtcNow;
-
-            _logger.LogInformation("Charger {ChargePointId} marked as disconnected", evt.ChargePointId);
+            _logger.LogInformation("Charger {ChargePointId} marked as disconnected", chargePointId);
         }
-        return Task.CompletedTask;
     }
 
-    #endregion
-
-    #region Domain Event Handlers — Boot Notification
-
-    public Task HandleAsync(ChargerRegistered evt, CancellationToken ct = default)
+    public void OnBoot(string chargePointId, ChargerInfo info)
     {
-        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
-        {
-            ChargePointId = id,
-            IsConnected = true,
-            ConnectedAt = DateTime.UtcNow
-        });
-
-        status.Info = new ChargerInfo
-        {
-            Vendor = evt.Vendor,
-            Model = evt.Model,
-            SerialNumber = evt.SerialNumber,
-            FirmwareVersion = evt.FirmwareVersion
-        };
-
+        var status = GetOrAdd(chargePointId);
+        status.Info = info;
         status.LastUpdated = DateTime.UtcNow;
-
         _logger.LogInformation("Updated charger info for {ChargePointId}: {Vendor} {Model}",
-            evt.ChargePointId, evt.Vendor, evt.Model);
-        return Task.CompletedTask;
+            chargePointId, info.Vendor, info.Model);
     }
 
-    #endregion
-
-    #region Domain Event Handlers — Status Notification
-
-    public Task HandleAsync(ConnectorStatusUpdated evt, CancellationToken ct = default)
+    public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode)
     {
-        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
-        {
-            ChargePointId = id,
-            IsConnected = true,
-            ConnectedAt = DateTime.UtcNow
-        });
-
-        var connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
-        {
-            ConnectorId = id
-        });
-
-        connectorStatus.Status = evt.Status;
-        connectorStatus.ErrorCode = evt.ErrorCode ?? "NoError";
-        connectorStatus.LastStatusUpdate = DateTime.UtcNow;
-
-        status.LastUpdated = DateTime.UtcNow;
-
+        var charger = GetOrAdd(chargePointId);
+        var connector = charger.Connectors.GetOrAdd(connectorId, id => new ConnectorStatus { ConnectorId = id });
+        connector.Status = status;
+        connector.ErrorCode = errorCode ?? "NoError";
+        connector.LastStatusUpdate = DateTime.UtcNow;
+        charger.LastUpdated = DateTime.UtcNow;
         _logger.LogDebug("Updated status for {ChargePointId} connector {ConnectorId}: {Status}",
-            evt.ChargePointId, evt.ConnectorId, evt.Status);
-        return Task.CompletedTask;
+            chargePointId, connectorId, status);
     }
 
-    #endregion
-
-    #region Domain Event Handlers — Transaction Management
-
-    public Task HandleAsync(ChargingSessionStarted evt, CancellationToken ct = default)
+    public void OnTransactionStarted(string chargePointId, int connectorId, int transactionId, int meterStartWh, string? idTag, DateTimeOffset startedAt)
     {
-        var status = _chargerStatuses.GetOrAdd(evt.ChargePointId, id => new ChargerStatus
-        {
-            ChargePointId = id,
-            IsConnected = true,
-            ConnectedAt = DateTime.UtcNow
-        });
-
-        var connectorStatus = status.Connectors.GetOrAdd(evt.ConnectorId, id => new ConnectorStatus
-        {
-            ConnectorId = id
-        });
-
-        connectorStatus.ActiveTransactionId = evt.TransactionId;
-        connectorStatus.TransactionStartTime = evt.OccurredAt.UtcDateTime;
-        connectorStatus.IdTag = evt.IdTag;
-
-        status.LastUpdated = DateTime.UtcNow;
-
+        var charger = GetOrAdd(chargePointId);
+        var connector = charger.Connectors.GetOrAdd(connectorId, id => new ConnectorStatus { ConnectorId = id });
+        connector.ActiveTransactionId = transactionId;
+        connector.TransactionStartTime = startedAt.UtcDateTime;
+        connector.IdTag = idTag;
+        charger.LastUpdated = DateTime.UtcNow;
         _logger.LogInformation("Transaction {TransactionId} started on {ChargePointId} connector {ConnectorId}",
-            evt.TransactionId, evt.ChargePointId, evt.ConnectorId);
-        return Task.CompletedTask;
+            transactionId, chargePointId, connectorId);
     }
 
-    public Task HandleAsync(ChargingSessionCompleted evt, CancellationToken ct = default)
+    public void OnTransactionStopped(string chargePointId, int transactionId, int meterStopWh, string? reason, DateTimeOffset stoppedAt)
     {
-        if (_chargerStatuses.TryGetValue(evt.ChargePointId, out var status))
+        if (_chargerStatuses.TryGetValue(chargePointId, out var charger))
         {
-            // Find the connector with this transaction ID
-            var connector = status.Connectors.Values
-                .FirstOrDefault(c => c.ActiveTransactionId == evt.TransactionId);
-
+            var connector = charger.Connectors.Values.FirstOrDefault(c => c.ActiveTransactionId == transactionId);
             if (connector != null)
             {
                 connector.ActiveTransactionId = null;
                 connector.TransactionStartTime = null;
                 connector.IdTag = null;
-
-                status.LastUpdated = DateTime.UtcNow;
-
+                charger.LastUpdated = DateTime.UtcNow;
                 _logger.LogInformation("Transaction {TransactionId} stopped on {ChargePointId} connector {ConnectorId}",
-                    evt.TransactionId, evt.ChargePointId, connector.ConnectorId);
+                    transactionId, chargePointId, connector.ConnectorId);
             }
         }
-        return Task.CompletedTask;
+    }
+
+    public void OnMeterValues(string chargePointId, MeterValuesRequest request)
+    {
+        var status = GetOrAdd(chargePointId);
+        var measurands = status.Measurands.GetOrAdd(request.ConnectorId, id => new ConnectorMeasurands { ConnectorId = id });
+
+        foreach (var meterValue in request.MeterValue)
+            foreach (var sampledValue in meterValue.SampledValue)
+                UpdateMeasurand(measurands, sampledValue, meterValue.Timestamp);
+
+        measurands.LastUpdated = DateTime.UtcNow;
+        status.LastUpdated = DateTime.UtcNow;
+        _logger.LogDebug("Updated measurands for {ChargePointId} connector {ConnectorId}",
+            chargePointId, request.ConnectorId);
     }
 
     #endregion
 
-    #region Meter Values (still called directly from ChargePointSession — not event-driven yet)
-
-    /// <summary>
-    /// Update measurands from MeterValues.
-    /// Called directly from ChargePointSession.HandleMeterValuesAsync.
-    /// </summary>
-    public void OnMeterValues(string chargePointId, MeterValuesRequest request)
-    {
-        var status = _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus
-        {
-            ChargePointId = id,
-            IsConnected = true,
-            ConnectedAt = DateTime.UtcNow
-        });
-
-        var measurands = status.Measurands.GetOrAdd(request.ConnectorId, id => new ConnectorMeasurands
-        {
-            ConnectorId = id
-        });
-
-        // Process each meter value
-        foreach (var meterValue in request.MeterValue)
-        {
-            foreach (var sampledValue in meterValue.SampledValue)
-            {
-                UpdateMeasurand(measurands, sampledValue, meterValue.Timestamp);
-            }
-        }
-
-        measurands.LastUpdated = DateTime.UtcNow;
-        status.LastUpdated = DateTime.UtcNow;
-
-        _logger.LogDebug("Updated measurands for {ChargePointId} connector {ConnectorId}",
-            chargePointId, request.ConnectorId);
-    }
+    private ChargerStatus GetOrAdd(string chargePointId) =>
+        _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus { ChargePointId = id });
 
     private void UpdateMeasurand(ConnectorMeasurands measurands, SampledValue sampledValue, DateTime timestamp)
     {
@@ -274,17 +126,15 @@ public class ChargerStatusTracker : IChargerReadModel,
             Timestamp = timestamp
         };
 
-        // Map measurand to the appropriate property
         var measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
         var phase = sampledValue.Phase;
 
         switch (measurand)
         {
-            // Energy
             case "Energy.Active.Import.Register":
                 if (value.Unit?.Equals("wh", StringComparison.OrdinalIgnoreCase) ?? false)
                 {
-                    value.Value = (float.Parse(value.Value) / 1000f).ToString(CultureInfo.InvariantCulture); // Convert Wh to kWh
+                    value.Value = (float.Parse(value.Value, CultureInfo.InvariantCulture) / 1000f).ToString(CultureInfo.InvariantCulture); // Wh -> kWh
                     value.Unit = "kWh";
                 }
                 measurands.EnergyActiveImportRegister = value;
@@ -299,7 +149,6 @@ public class ChargerStatusTracker : IChargerReadModel,
                 measurands.EnergyReactiveExportRegister = value;
                 break;
 
-            // Power
             case "Power.Active.Import":
                 measurands.PowerActiveImport = value;
                 break;
@@ -310,44 +159,38 @@ public class ChargerStatusTracker : IChargerReadModel,
                 measurands.PowerOffered = value;
                 break;
 
-            // Voltage
             case "Voltage":
-                if (phase == "L1")
-                    measurands.VoltageL1 = value;
-                else if (phase == "L2")
-                    measurands.VoltageL2 = value;
-                else if (phase == "L3")
-                    measurands.VoltageL3 = value;
-                else if (phase == "L1-N")
-                    measurands.VoltageL1N = value;
-                else if (phase == "L2-N")
-                    measurands.VoltageL2N = value;
-                else if (phase == "L3-N")
-                    measurands.VoltageL3N = value;
+                switch (phase)
+                {
+                    case "L1": measurands.VoltageL1 = value; break;
+                    case "L2": measurands.VoltageL2 = value; break;
+                    case "L3": measurands.VoltageL3 = value; break;
+                    case "L1-N": measurands.VoltageL1N = value; break;
+                    case "L2-N": measurands.VoltageL2N = value; break;
+                    case "L3-N": measurands.VoltageL3N = value; break;
+                }
                 break;
 
-            // Current
             case "Current.Import":
-                if (phase == "L1")
-                    measurands.CurrentImportL1 = value;
-                else if (phase == "L2")
-                    measurands.CurrentImportL2 = value;
-                else if (phase == "L3")
-                    measurands.CurrentImportL3 = value;
+                switch (phase)
+                {
+                    case "L1": measurands.CurrentImportL1 = value; break;
+                    case "L2": measurands.CurrentImportL2 = value; break;
+                    case "L3": measurands.CurrentImportL3 = value; break;
+                }
                 break;
             case "Current.Export":
-                if (phase == "L1")
-                    measurands.CurrentExportL1 = value;
-                else if (phase == "L2")
-                    measurands.CurrentExportL2 = value;
-                else if (phase == "L3")
-                    measurands.CurrentExportL3 = value;
+                switch (phase)
+                {
+                    case "L1": measurands.CurrentExportL1 = value; break;
+                    case "L2": measurands.CurrentExportL2 = value; break;
+                    case "L3": measurands.CurrentExportL3 = value; break;
+                }
                 break;
             case "Current.Offered":
                 measurands.CurrentOffered = value;
                 break;
 
-            // Other
             case "Temperature":
                 measurands.Temperature = value;
                 break;
@@ -361,270 +204,37 @@ public class ChargerStatusTracker : IChargerReadModel,
                 measurands.Rpm = value;
                 break;
             default:
-                //Log unrecognized measurand for debugging
-                _logger.LogWarning("Received unrecognized measurand {Measurand} for {ChargePointId} connector {ConnectorId}",
-                    measurand, measurands.ConnectorId, measurands.ConnectorId);
+                _logger.LogWarning("Unrecognized measurand {Measurand} for connector {ConnectorId}",
+                    measurand, measurands.ConnectorId);
                 break;
         }
     }
 
-    #endregion
+    #region Query methods (raw in-memory status — consumed by the read API in later phases)
 
-    #region Query Methods
+    public ChargerStatus? GetChargerStatus(string chargePointId) =>
+        _chargerStatuses.TryGetValue(chargePointId, out var status) ? status : null;
 
-    /// <summary>
-    /// Returns immutable charger snapshots for the API/application read model.
-    /// </summary>
-    public IEnumerable<ChargerSnapshot> GetChargers(bool? connected = null)
-    {
-        var statuses = connected switch
-        {
-            true => GetConnectedChargers(),
-            false => GetAllChargerStatuses().Where(status => !status.IsConnected),
-            null => GetAllChargerStatuses()
-        };
+    public IEnumerable<ChargerStatus> GetAllChargerStatuses() => _chargerStatuses.Values;
 
-        return statuses.Select(CreateChargerSnapshot);
-    }
+    public IEnumerable<ChargerStatus> GetConnectedChargers() => _chargerStatuses.Values.Where(s => s.IsConnected);
 
-    /// <summary>
-    /// Returns a single immutable charger snapshot for the API/application read model.
-    /// </summary>
-    public ChargerSnapshot? GetCharger(string chargerId)
-    {
-        return GetChargerStatus(chargerId) is { } status
-            ? CreateChargerSnapshot(status)
+    public ConnectorStatus? GetConnectorStatus(string chargePointId, int connectorId) =>
+        _chargerStatuses.TryGetValue(chargePointId, out var status)
+            && status.Connectors.TryGetValue(connectorId, out var connector)
+            ? connector
             : null;
-    }
 
-    /// <summary>
-    /// Returns active charging-session snapshots for the API/application read model.
-    /// </summary>
-    public IEnumerable<ActiveChargingSessionSnapshot> GetActiveChargingSessions(string? chargerId = null)
-    {
-        var statuses = string.IsNullOrWhiteSpace(chargerId)
-            ? GetAllChargerStatuses()
-            : _chargerStatuses.TryGetValue(chargerId, out var status)
-                ? new[] { status }
-                : Enumerable.Empty<ChargerStatus>();
+    public ConnectorMeasurands? GetConnectorMeasurands(string chargePointId, int connectorId) =>
+        _chargerStatuses.TryGetValue(chargePointId, out var status)
+            && status.Measurands.TryGetValue(connectorId, out var measurands)
+            ? measurands
+            : null;
 
-        return statuses.SelectMany(status => status.Connectors.Values
-            .Where(connector => connector.ActiveTransactionId.HasValue)
-            .OrderBy(connector => connector.ConnectorId)
-            .Select(connector => CreateActiveChargingSessionSnapshot(status, connector)));
-    }
-
-    /// <summary>
-    /// Get status of a specific charger
-    /// </summary>
-    public ChargerStatus? GetChargerStatus(string chargePointId)
-    {
-        return _chargerStatuses.TryGetValue(chargePointId, out var status) ? status : null;
-    }
-
-    /// <summary>
-    /// Get all charger statuses
-    /// </summary>
-    public IEnumerable<ChargerStatus> GetAllChargerStatuses()
-    {
-        return _chargerStatuses.Values;
-    }
-
-    /// <summary>
-    /// Get all connected chargers
-    /// </summary>
-    public IEnumerable<ChargerStatus> GetConnectedChargers()
-    {
-        return _chargerStatuses.Values.Where(s => s.IsConnected);
-    }
-
-    /// <summary>
-    /// Get connector status for a specific charger and connector
-    /// </summary>
-    public ConnectorStatus? GetConnectorStatus(string chargePointId, int connectorId)
-    {
-        if (_chargerStatuses.TryGetValue(chargePointId, out var status))
-        {
-            return status.Connectors.TryGetValue(connectorId, out var connectorStatus)
-                ? connectorStatus
-                : null;
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Get measurands for a specific charger and connector
-    /// </summary>
-    public ConnectorMeasurands? GetConnectorMeasurands(string chargePointId, int connectorId)
-    {
-        if (_chargerStatuses.TryGetValue(chargePointId, out var status))
-        {
-            return status.Measurands.TryGetValue(connectorId, out var measurands)
-                ? measurands
-                : null;
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// Get all chargers currently in a charging state
-    /// </summary>
-    public IEnumerable<(string ChargePointId, int ConnectorId)> GetActiveChargingSessions()
-    {
-        return _chargerStatuses.Values
-            .SelectMany(status => status.Connectors.Values
-                .Where(c => c.Status == "Charging" && c.ActiveTransactionId.HasValue)
-                .Select(c => (status.ChargePointId, c.ConnectorId)));
-    }
-
-    /// <summary>
-    /// Get all active transactions across every charger, including measurand data.
-    /// Used by the dashboard summary endpoint.
-    /// </summary>
-    public IEnumerable<(string ChargePointId, ConnectorStatus Connector, ConnectorMeasurands? Measurands)> GetAllActiveTransactions()
-    {
-        return _chargerStatuses.Values
-            .SelectMany(status => status.Connectors.Values
-                .Where(c => c.ActiveTransactionId.HasValue)
-                .Select(c =>
-                {
-                    status.Measurands.TryGetValue(c.ConnectorId, out var measurands);
-                    return (status.ChargePointId, c, measurands);
-                }));
-    }
-
-    /// <summary>
-    /// Remove a charger from tracking (cleanup)
-    /// </summary>
     public void RemoveCharger(string chargePointId)
     {
         if (_chargerStatuses.TryRemove(chargePointId, out _))
-        {
             _logger.LogInformation("Removed charger {ChargePointId} from status tracking", chargePointId);
-        }
-    }
-
-    private ChargerSnapshot CreateChargerSnapshot(ChargerStatus status)
-    {
-        var connectors = status.Connectors.Values
-            .OrderBy(connector => connector.ConnectorId)
-            .Select(connector => CreateConnectorSnapshot(status, connector))
-            .ToList();
-
-        return new ChargerSnapshot
-        {
-            ChargerId = status.ChargePointId,
-            LastUpdated = status.LastUpdated,
-            IsConnected = status.IsConnected,
-            ConnectedAt = status.ConnectedAt,
-            DisconnectedAt = status.DisconnectedAt,
-            Info = CreateChargerInfoSnapshot(status.Info),
-            Connectors = connectors
-        };
-    }
-
-    private static ChargerInfoSnapshot? CreateChargerInfoSnapshot(ChargerInfo? info)
-    {
-        return info is null
-            ? null
-            : new ChargerInfoSnapshot
-            {
-                Vendor = info.Vendor,
-                Model = info.Model,
-                SerialNumber = info.SerialNumber,
-                FirmwareVersion = info.FirmwareVersion,
-                Iccid = info.Iccid,
-                Imsi = info.Imsi,
-                MeterType = info.MeterType,
-                MeterSerialNumber = info.MeterSerialNumber
-            };
-    }
-
-    private ConnectorSnapshot CreateConnectorSnapshot(ChargerStatus status, ConnectorStatus connector)
-    {
-        status.Measurands.TryGetValue(connector.ConnectorId, out var measurands);
-
-        return new ConnectorSnapshot
-        {
-            ConnectorId = connector.ConnectorId,
-            Status = connector.Status,
-            ErrorCode = connector.ErrorCode,
-            Info = connector.Info,
-            VendorId = connector.VendorId,
-            VendorErrorCode = connector.VendorErrorCode,
-            LastStatusUpdate = connector.LastStatusUpdate,
-            ActiveSessionId = connector.ActiveTransactionId,
-            SessionStartedAt = connector.TransactionStartTime,
-            AuthorizationTag = connector.IdTag,
-            Measurements = CreateConnectorMeasurementsSnapshot(measurands)
-        };
-    }
-
-    private ActiveChargingSessionSnapshot CreateActiveChargingSessionSnapshot(ChargerStatus status, ConnectorStatus connector)
-    {
-        status.Measurands.TryGetValue(connector.ConnectorId, out var measurands);
-
-        return new ActiveChargingSessionSnapshot
-        {
-            ChargerId = status.ChargePointId,
-            ConnectorId = connector.ConnectorId,
-            SessionId = connector.ActiveTransactionId!.Value,
-            AuthorizationTag = connector.IdTag,
-            StartedAt = connector.TransactionStartTime,
-            ConnectorStatus = connector.Status,
-            Measurements = CreateConnectorMeasurementsSnapshot(measurands)
-        };
-    }
-
-    private static ConnectorMeasurementsSnapshot? CreateConnectorMeasurementsSnapshot(ConnectorMeasurands? measurands)
-    {
-        return measurands is null
-            ? null
-            : new ConnectorMeasurementsSnapshot
-            {
-                ConnectorId = measurands.ConnectorId,
-                LastUpdated = measurands.LastUpdated,
-                ImportedEnergy = CreateMeasurementValueSnapshot(measurands.EnergyActiveImportRegister),
-                ImportedReactiveEnergy = CreateMeasurementValueSnapshot(measurands.EnergyReactiveImportRegister),
-                ExportedEnergy = CreateMeasurementValueSnapshot(measurands.EnergyActiveExportRegister),
-                ExportedReactiveEnergy = CreateMeasurementValueSnapshot(measurands.EnergyReactiveExportRegister),
-                ImportedPower = CreateMeasurementValueSnapshot(measurands.PowerActiveImport),
-                ImportedReactivePower = CreateMeasurementValueSnapshot(measurands.PowerReactiveImport),
-                OfferedPower = CreateMeasurementValueSnapshot(measurands.PowerOffered),
-                VoltageL1 = CreateMeasurementValueSnapshot(measurands.VoltageL1),
-                VoltageL2 = CreateMeasurementValueSnapshot(measurands.VoltageL2),
-                VoltageL3 = CreateMeasurementValueSnapshot(measurands.VoltageL3),
-                VoltageL1N = CreateMeasurementValueSnapshot(measurands.VoltageL1N),
-                VoltageL2N = CreateMeasurementValueSnapshot(measurands.VoltageL2N),
-                VoltageL3N = CreateMeasurementValueSnapshot(measurands.VoltageL3N),
-                ImportedCurrentL1 = CreateMeasurementValueSnapshot(measurands.CurrentImportL1),
-                ImportedCurrentL2 = CreateMeasurementValueSnapshot(measurands.CurrentImportL2),
-                ImportedCurrentL3 = CreateMeasurementValueSnapshot(measurands.CurrentImportL3),
-                ExportedCurrentL1 = CreateMeasurementValueSnapshot(measurands.CurrentExportL1),
-                ExportedCurrentL2 = CreateMeasurementValueSnapshot(measurands.CurrentExportL2),
-                ExportedCurrentL3 = CreateMeasurementValueSnapshot(measurands.CurrentExportL3),
-                OfferedCurrent = CreateMeasurementValueSnapshot(measurands.CurrentOffered),
-                Temperature = CreateMeasurementValueSnapshot(measurands.Temperature),
-                StateOfCharge = CreateMeasurementValueSnapshot(measurands.SoC),
-                Frequency = CreateMeasurementValueSnapshot(measurands.Frequency),
-                RevolutionsPerMinute = CreateMeasurementValueSnapshot(measurands.Rpm)
-            };
-    }
-
-    private static MeasurementValueSnapshot? CreateMeasurementValueSnapshot(MeasurandValue? value)
-    {
-        return value is null
-            ? null
-            : new MeasurementValueSnapshot
-            {
-                Value = value.Value,
-                Unit = value.Unit,
-                Context = value.Context,
-                Format = value.Format,
-                Location = value.Location,
-                Phase = value.Phase,
-                Timestamp = value.Timestamp
-            };
     }
 
     #endregion

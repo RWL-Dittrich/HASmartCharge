@@ -14,9 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\HASmartCharge.Application\HASmartCharge.Application.csproj" />
     <ProjectReference Include="..\HASmartCharge.Backend.DB\HASmartCharge.Backend.DB.csproj" />
-    <ProjectReference Include="..\HASmartCharge.Domain\HASmartCharge.Domain.csproj" />
   </ItemGroup>
 
 </Project>

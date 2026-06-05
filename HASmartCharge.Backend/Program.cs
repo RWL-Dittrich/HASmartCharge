@@ -1,16 +1,13 @@
-using HASmartCharge.Application.Commands;
-using HASmartCharge.Application.Events;
-using HASmartCharge.Domain.Events;
-using HASmartCharge.Application.Interfaces;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.HomeAssistant.Auth;
 using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
 using HASmartCharge.Backend.HomeAssistant.BackgroundServices;
 using HASmartCharge.Backend.HomeAssistant.Configuration;
-using HASmartCharge.Backend.HomeAssistant.EventHandlers;
 using HASmartCharge.Backend.HomeAssistant.Services;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
+using HASmartCharge.Backend.OCPP.Application;
 using HASmartCharge.Backend.OCPP.Domain;
+using HASmartCharge.Backend.OCPP.Infrastructure;
 using HASmartCharge.Backend.OCPP.Services;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
@@ -18,120 +15,62 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-
-// Add HTTP client factory for Home Assistant API calls
 builder.Services.AddHttpClient();
 
-// Configure Home Assistant Auth Options
+// Home Assistant auth options
 builder.Services.Configure<HomeAssistantAuthOptions>(
     builder.Configuration.GetSection(HomeAssistantAuthOptions.SectionName));
 
-//Configure Database
+// Database
 builder.Services.AddSqlite<ApplicationDbContext>(builder.Configuration.GetConnectionString("DefaultConnection"));
 
-// Register authentication services
+// Home Assistant authentication
 builder.Services.AddSingleton<IAuthStateStore, InMemoryAuthStateStore>();
 builder.Services.AddSingleton<IHomeAssistantAuthService, HomeAssistantAuthService>();
 builder.Services.AddSingleton<IHomeAssistantConnectionManager, HomeAssistantConnectionManager>();
-
-// Register background services
 builder.Services.AddHostedService<AuthStateCleanupService>();
 builder.Services.AddHostedService<TokenRefreshService>();
-
-// Register services
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
-builder.Services.AddSingleton<IHomeAutomationGateway, HomeAssistantGateway>();
-builder.Services.AddSingleton<HomeAutomationEventHandler>();
 
-// Register OCPP services (new layered architecture)
+// OCPP: transport, routing, sessions
 builder.Services.AddSingleton<WebSocketMessageService>();
-builder.Services.AddSingleton<ChargerStatusTracker>();
-builder.Services.AddSingleton<IChargerReadModel>(serviceProvider =>
-    serviceProvider.GetRequiredService<ChargerStatusTracker>());
-
-// New architecture components
 builder.Services.AddSingleton<ISessionManager, SessionManager>();
-builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Application.IOcppMessageRouter, HASmartCharge.Backend.OCPP.Application.OcppMessageRouter>();
-builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Infrastructure.OcppConnectionOrchestrator>();
+builder.Services.AddSingleton<IOcppMessageRouter, OcppMessageRouter>();
+builder.Services.AddSingleton<OcppConnectionOrchestrator>();
 
-// Command sender (uses new architecture)
-builder.Services.AddSingleton<HASmartCharge.Backend.OCPP.Services.ICommandSender, HASmartCharge.Backend.OCPP.Services.SessionCommandSender>();
-builder.Services.AddSingleton<IChargerGateway, OcppChargerGateway>();
+// OCPP: telemetry sink (live in-memory charger status)
+builder.Services.AddSingleton<ChargerStatusTracker>();
+builder.Services.AddSingleton<IChargerTelemetrySink>(sp => sp.GetRequiredService<ChargerStatusTracker>());
+
+// OCPP: outbound command surface (config push, availability, unlock)
+builder.Services.AddSingleton<ICommandSender, SessionCommandSender>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
-
-// Domain event dispatcher
-builder.Services.AddSingleton<DomainEventDispatcher>();
-builder.Services.AddSingleton<IDomainEventDispatcher>(sp => sp.GetRequiredService<DomainEventDispatcher>());
-
-// Concrete repositories (implement application interfaces, backed by EF Core)
-builder.Services.AddSingleton<IChargerRepository, EfChargerRepository>();
-builder.Services.AddSingleton<IChargingSessionRepository, EfChargingSessionRepository>();
-
-// Application command handlers
-builder.Services.AddSingleton<RegisterChargerHandler>();
-builder.Services.AddSingleton<BeginChargingSessionHandler>();
-builder.Services.AddSingleton<CompleteChargingSessionHandler>();
-builder.Services.AddSingleton<UpdateConnectorStatusHandler>();
-
+builder.Services.AddSingleton<IChargerControl, ChargerControl>();
 
 var app = builder.Build();
 var startupLogger = app.Logger;
 
-// Configure the HTTP request pipeline.
+// HTTP pipeline
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-// Enable WebSockets middleware
 app.UseWebSockets();
-
 app.UseAuthorization();
-
 app.MapControllers();
 
-// Wire domain event handlers to the dispatcher
-{
-    var dispatcher = app.Services.GetRequiredService<DomainEventDispatcher>();
-    var tracker = app.Services.GetRequiredService<ChargerStatusTracker>();
-    dispatcher.Register<ChargerConnected>(tracker);
-    dispatcher.Register<ChargerDisconnected>(tracker);
-    dispatcher.Register<ChargerRegistered>(tracker);
-    dispatcher.Register<ChargingSessionStarted>(tracker);
-    dispatcher.Register<ChargingSessionCompleted>(tracker);
-    dispatcher.Register<ConnectorStatusUpdated>(tracker);
-
-    var haHandler = app.Services.GetRequiredService<HomeAutomationEventHandler>();
-    dispatcher.Register<ChargerConnected>(haHandler);
-    dispatcher.Register<ChargerDisconnected>(haHandler);
-    dispatcher.Register<ConnectorStatusUpdated>(haHandler);
-    dispatcher.Register<ChargingSessionStarted>(haHandler);
-    dispatcher.Register<ChargingSessionCompleted>(haHandler);
-}
-
+// Startup initialization
 {
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-    //Do migrations here
-    if ((await dbContext.Database.GetPendingMigrationsAsync()).Any())
-    {
-        await dbContext.Database.MigrateAsync();
-    }
+    // Idempotent: applies any pending migrations, creates the DB if absent, no-ops when current.
+    await dbContext.Database.MigrateAsync();
 
-    // Seed the in-memory charger status tracker from the database
-    // so the API shows all known chargers (as disconnected) before any WebSocket connections arrive
-    var chargerRepository = app.Services.GetRequiredService<IChargerRepository>();
-    var statusTracker = app.Services.GetRequiredService<ChargerStatusTracker>();
-    var knownChargers = await chargerRepository.GetAllAsync();
-    statusTracker.SeedFromDomainChargers(knownChargers);
-
-    // Initialize the Home Assistant connection manager
     var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
     await connectionManager.InitializeAsync();
 

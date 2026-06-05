@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HASmartCharge.Backend.DB.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260213133922_Initial migration")]
-    partial class Initialmigration
+    [Migration("20260605205350_InitialSchema")]
+    partial class InitialSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
