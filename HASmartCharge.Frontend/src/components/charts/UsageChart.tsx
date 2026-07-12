@@ -162,7 +162,7 @@ export function UsageChart({ sessions, currency, height = 260 }: UsageChartProps
       ) : (
         <div style={{ height }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} accessibilityLayer={false}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a3042" vertical={false} />
               <XAxis
                 dataKey="label"

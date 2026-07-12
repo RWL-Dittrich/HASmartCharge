@@ -11,6 +11,18 @@
 }
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Recharts marks its surface/bars focusable; on touch the browser paints an
+   orange focus ring around the plot and flashes bars. Suppress it (keyboard
+   focus rings elsewhere are untouched). */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-wrapper *:focus,
+.recharts-wrapper *:focus-visible {
+  outline: none;
 }
 html,
 body,

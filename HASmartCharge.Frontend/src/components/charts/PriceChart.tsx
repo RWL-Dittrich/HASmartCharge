@@ -88,7 +88,7 @@ export function PriceChart({ prices, selectedHours, currency, height = 220 }: Pr
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} accessibilityLayer={false}>
           <XAxis
             dataKey="label"
             tick={{ fill: '#8892a4', fontSize: 11 }}
