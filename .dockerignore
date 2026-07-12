@@ -1,0 +1,22 @@
+# Build outputs and deps — rebuilt inside the image
+**/bin/
+**/obj/
+HASmartCharge.Frontend/node_modules/
+HASmartCharge.Frontend/dist/
+
+# VCS / IDE / local
+.git/
+.github/
+.vs/
+.idea/
+*.user
+
+# Local dev artifacts
+hasmartcharge.db
+hasmartcharge.db-*
+**/appsettings.Development.json
+
+# Docs / plans / add-on metadata (not needed in the image build)
+addon/
+*.md
+plan*.md

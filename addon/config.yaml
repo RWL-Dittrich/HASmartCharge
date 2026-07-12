@@ -1,0 +1,26 @@
+name: HASmartCharge
+version: "0.1.0"
+slug: hasmartcharge
+description: >-
+  Charge one EV as cheaply as possible by a deadline using EPEX hourly prices,
+  Home Assistant service calls, and OCPP 1.6J charger telemetry.
+url: https://github.com/RWL-Dittrich/HASmartCharge
+arch:
+  - amd64
+# Prebuilt image pulled from GHCR ({arch} -> amd64). Must match the tag the CI workflow pushes
+# and this file's version (HA pulls ghcr.io/rwl-dittrich/hasmartcharge-amd64:<version>).
+image: ghcr.io/rwl-dittrich/hasmartcharge-{arch}
+init: false
+# UI + API behind the HA sidebar (uses HA login); backend listens on 8099 for ingress.
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:ev-station
+panel_title: Smart Charge
+# Grants SUPERVISOR_TOKEN + access to the Core API proxy (http://supervisor/core) so the
+# add-on talks to HA without the OAuth "connect" flow.
+homeassistant_api: true
+# OCPP 1.6J WebSocket — the charger connects directly here (cannot go through ingress).
+ports:
+  "8180/tcp": 8180
+ports_description:
+  "8180/tcp": "OCPP 1.6J WebSocket — point the charger at ws://<HA-IP>:8180/ocpp/1.6/<chargePointId>"

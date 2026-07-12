@@ -27,10 +27,12 @@ public class HomeAssistantApiService : IHomeAssistantApiService
         }
 
         var client = _httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(connection.BaseUrl);
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", connection.AccessToken);
+        // Concatenate rather than BaseAddress + rooted path so a base with a path segment
+        // (Supervisor proxy: http://supervisor/core) isn't dropped.
+        var baseUrl = connection.BaseUrl.TrimEnd('/');
 
-        var response = await client.GetAsync("/api/states");
+        var response = await client.GetAsync($"{baseUrl}/api/states");
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsStringAsync();

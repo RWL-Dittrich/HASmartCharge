@@ -4,6 +4,7 @@ using HASmartCharge.Backend.HomeAssistant.Models;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -18,15 +19,38 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
     private readonly IServiceScopeFactory _scopeFactory;
     private bool _initialized;
 
+    // When running as a Home Assistant add-on the Supervisor injects SUPERVISOR_TOKEN and proxies
+    // the Core API at http://supervisor/core. In that mode we skip the whole OAuth/refresh dance:
+    // the token is long-lived and managed by the Supervisor, and there's no user "connect" step.
+    private readonly string? _supervisorToken;
+    private readonly string _supervisorBaseUrl;
+    private bool SupervisorMode => !string.IsNullOrWhiteSpace(_supervisorToken);
+
     public HomeAssistantConnectionManager(
         ILogger<HomeAssistantConnectionManager> logger,
         IHttpClientFactory httpClientFactory,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        IConfiguration configuration)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _scopeFactory = scopeFactory;
+        _supervisorToken = configuration["SUPERVISOR_TOKEN"];
+        _supervisorBaseUrl = configuration["HomeAssistant:BaseUrl"] ?? "http://supervisor/core";
     }
+
+    private HomeAssistantConnection BuildSupervisorConnection() => new()
+    {
+        BaseUrl = _supervisorBaseUrl,
+        ClientId = "supervisor",
+        AccessToken = _supervisorToken!,
+        RefreshToken = string.Empty, // Supervisor token is not refreshed by this app.
+        TokenType = "Bearer",
+        ExpiresIn = int.MaxValue,
+        ExpiresAt = DateTime.MaxValue,
+        ConnectedAt = DateTime.UtcNow,
+        LastRefreshedAt = DateTime.UtcNow
+    };
 
     /// <summary>
     /// Initialize the connection manager by loading stored connection from database.
@@ -34,6 +58,19 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
     /// </summary>
     public async Task InitializeAsync()
     {
+        if (SupervisorMode)
+        {
+            lock (_lock)
+            {
+                _connection = BuildSupervisorConnection();
+                _initialized = true;
+            }
+
+            _logger.LogInformation(
+                "Running as a Home Assistant add-on; using the Supervisor token against {BaseUrl}.", _supervisorBaseUrl);
+            return;
+        }
+
         try
         {
             using var scope = _scopeFactory.CreateScope();
@@ -300,6 +337,14 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
 
     public HomeAssistantConnection? GetConnection()
     {
+        if (SupervisorMode)
+        {
+            lock (_lock)
+            {
+                return _connection ??= BuildSupervisorConnection();
+            }
+        }
+
         // Ensure initialization is complete (synchronous wait for async operation)
         EnsureInitializedAsync().GetAwaiter().GetResult();
 
@@ -311,6 +356,11 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
 
     public bool IsConnected()
     {
+        if (SupervisorMode)
+        {
+            return true;
+        }
+
         // Ensure initialization is complete (synchronous wait for async operation)
         EnsureInitializedAsync().GetAwaiter().GetResult();
 
@@ -322,6 +372,11 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
 
     public async Task<string> GetValidAccessTokenAsync()
     {
+        if (SupervisorMode)
+        {
+            return _supervisorToken!;
+        }
+
         HomeAssistantConnection? connection;
         lock (_lock)
         {
@@ -355,6 +410,13 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
 
     public async Task RefreshAccessTokenAsync()
     {
+        if (SupervisorMode)
+        {
+            // Supervisor token is managed by HA; nothing to refresh.
+            await Task.CompletedTask;
+            return;
+        }
+
         HomeAssistantConnection? connection;
         lock (_lock)
         {
@@ -452,6 +514,12 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
 
     public void Disconnect()
     {
+        if (SupervisorMode)
+        {
+            _logger.LogWarning("Disconnect ignored: running as an add-on with the Supervisor token.");
+            return;
+        }
+
         // Call async version synchronously
         DisconnectAsync().GetAwaiter().GetResult();
     }

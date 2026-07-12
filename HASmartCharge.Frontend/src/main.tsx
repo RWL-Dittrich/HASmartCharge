@@ -14,9 +14,13 @@ const queryClient = new QueryClient({
   },
 })
 
+// Under HA ingress the app is served from a path prefix (/api/hassio_ingress/<token>/);
+// <base href> carries it, so derive the router basename from it. Empty ("") when standalone.
+const basename = new URL(document.baseURI).pathname.replace(/\/$/, '')
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <QueryClientProvider client={queryClient}>
         <App />
       </QueryClientProvider>
