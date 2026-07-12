@@ -77,7 +77,7 @@ export function SchedulePage() {
     <div className="flex flex-col h-full overflow-auto">
       <TopBar title="Schedule" subtitle="Plan a full charge before a deadline at the cheapest hours" />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-4 space-y-4 sm:p-6 sm:space-y-6">
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}

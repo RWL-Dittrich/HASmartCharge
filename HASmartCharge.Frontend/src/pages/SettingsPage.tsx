@@ -21,14 +21,14 @@ export function SettingsPage() {
     <div className="flex flex-col h-full overflow-auto">
       <TopBar title="Settings" subtitle="Price provider, car, charger, and Home Assistant configuration" />
 
-      <div className="flex-1 p-6">
-        <div className="flex gap-1 border-b border-[#2a3042] mb-6">
+      <div className="flex-1 p-4 sm:p-6">
+        <div className="flex gap-1 border-b border-[#2a3042] mb-6 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                'shrink-0 whitespace-nowrap px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors sm:px-4',
                 activeTab === tab.id
                   ? 'border-blue-500 text-white'
                   : 'border-transparent text-[#8892a4] hover:text-white',
@@ -39,7 +39,7 @@ export function SettingsPage() {
           ))}
         </div>
 
-        <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-5">
+        <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 sm:p-5">
           <ActiveComponent />
         </div>
       </div>

@@ -116,7 +116,7 @@ export function HistoryPage() {
     <div className="flex flex-col h-full overflow-auto">
       <TopBar title="History" subtitle="Past charging sessions and their cost breakdown" />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-4 space-y-4 sm:p-6">
         {sortedSessions && sortedSessions.length > 0 && (
           <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4">
             <h2 className="mb-3 text-sm font-semibold text-white">Usage over time</h2>
@@ -145,7 +145,8 @@ export function HistoryPage() {
                 <span className="text-sm">No charge sessions yet</span>
               </div>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
                 <thead>
                   <tr className="text-xs text-[#8892a4] border-b border-[#2a3042]">
                     <th className="px-4 py-2 w-8" />
@@ -167,6 +168,7 @@ export function HistoryPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}

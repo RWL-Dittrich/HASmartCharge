@@ -88,14 +88,14 @@ export function DashboardPage() {
     <div className="flex flex-col h-full overflow-auto">
       <TopBar title="Dashboard" subtitle="Live status of your car, charger, and charge plan" />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-4 space-y-4 sm:p-6 sm:space-y-6">
         {actionError && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {actionError}
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           <StatCard
             title="Battery SoC"
             value={socPreview?.socPercent != null ? `${Math.round(socPreview.socPercent)}%` : '—'}

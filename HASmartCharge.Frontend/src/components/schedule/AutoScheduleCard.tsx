@@ -91,8 +91,8 @@ export function AutoScheduleCard() {
           const entry = draft.weekly.find((w) => w.dayOfWeek === day)
           if (!entry) return null
           return (
-            <div key={day} className="flex items-center gap-3">
-              <label className="flex items-center gap-2 w-32 text-sm text-[#c3cad8]">
+            <div key={day} className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <label className="flex items-center gap-2 w-28 shrink-0 text-sm text-[#c3cad8] sm:w-32">
                 <input
                   type="checkbox"
                   checked={entry.enabled}
