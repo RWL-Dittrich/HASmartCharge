@@ -8,8 +8,14 @@ export class ApiError extends Error {
   }
 }
 
+// Resolve API paths against the document base URI so requests carry the HA ingress
+// prefix when present (<base href>), and stay absolute-from-root when standalone.
+function resolveUrl(url: string): string {
+  return new URL(url.replace(/^\//, ''), document.baseURI).toString()
+}
+
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(resolveUrl(url), {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   })

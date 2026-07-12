@@ -58,10 +58,12 @@ public class HomeAssistantControl : IHomeAssistantControl
         var accessToken = await _connectionManager.GetValidAccessTokenAsync();
 
         var client = _httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(connection.BaseUrl);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        // Concatenate rather than use BaseAddress + rooted path: the Supervisor Core proxy base
+        // carries a path segment (http://supervisor/core) that a leading-slash path would drop.
+        var baseUrl = connection.BaseUrl.TrimEnd('/');
 
-        var response = await client.GetAsync($"/api/states/{entityId}", ct);
+        var response = await client.GetAsync($"{baseUrl}/api/states/{entityId}", ct);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
@@ -90,11 +92,13 @@ public class HomeAssistantControl : IHomeAssistantControl
         var accessToken = await _connectionManager.GetValidAccessTokenAsync();
 
         var client = _httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(connection.BaseUrl);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        // Concatenate rather than use BaseAddress + rooted path: the Supervisor Core proxy base
+        // carries a path segment (http://supervisor/core) that a leading-slash path would drop.
+        var baseUrl = connection.BaseUrl.TrimEnd('/');
 
         var body = new StringContent(dataJson ?? "{}", Encoding.UTF8, "application/json");
-        var response = await client.PostAsync($"/api/services/{domain}/{service}", body, ct);
+        var response = await client.PostAsync($"{baseUrl}/api/services/{domain}/{service}", body, ct);
         response.EnsureSuccessStatusCode();
     }
 
@@ -109,10 +113,12 @@ public class HomeAssistantControl : IHomeAssistantControl
         var accessToken = await _connectionManager.GetValidAccessTokenAsync();
 
         var client = _httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(connection.BaseUrl);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        // Concatenate rather than use BaseAddress + rooted path: the Supervisor Core proxy base
+        // carries a path segment (http://supervisor/core) that a leading-slash path would drop.
+        var baseUrl = connection.BaseUrl.TrimEnd('/');
 
-        var response = await client.GetAsync("/api/states", ct);
+        var response = await client.GetAsync($"{baseUrl}/api/states", ct);
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsStringAsync(ct);
@@ -153,10 +159,12 @@ public class HomeAssistantControl : IHomeAssistantControl
         var accessToken = await _connectionManager.GetValidAccessTokenAsync();
 
         var client = _httpClientFactory.CreateClient();
-        client.BaseAddress = new Uri(connection.BaseUrl);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        // Concatenate rather than use BaseAddress + rooted path: the Supervisor Core proxy base
+        // carries a path segment (http://supervisor/core) that a leading-slash path would drop.
+        var baseUrl = connection.BaseUrl.TrimEnd('/');
 
-        var response = await client.GetAsync("/api/services", ct);
+        var response = await client.GetAsync($"{baseUrl}/api/services", ct);
         response.EnsureSuccessStatusCode();
 
         var content = await response.Content.ReadAsStringAsync(ct);

@@ -5,6 +5,9 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative asset URLs so the built app works under any path prefix (HA ingress
+  // serves it under /api/hassio_ingress/<token>/). The runtime <base href> resolves them.
+  base: './',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

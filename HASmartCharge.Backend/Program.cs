@@ -15,6 +15,10 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Home Assistant add-on options are written here by the Supervisor; optional so
+// standalone runs simply ignore it. Keys map into IConfiguration (e.g. log_level).
+builder.Configuration.AddJsonFile("/data/options.json", optional: true, reloadOnChange: false);
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -89,8 +93,33 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseWebSockets();
+app.UseStaticFiles();
 app.UseAuthorization();
 app.MapControllers();
+
+// Serve the bundled SPA (present in the container image under wwwroot). Any route that
+// isn't an API/OCPP endpoint or a static file returns index.html, with <base href> set
+// to the HA ingress path (X-Ingress-Path header) so the client resolves assets, API calls
+// and router routes under the prefix. Skipped when no SPA is bundled (standalone dev runs
+// the Vite server separately on :5173).
+var spaIndexPath = app.Environment.WebRootPath is { } webRoot
+    ? Path.Combine(webRoot, "index.html")
+    : null;
+if (spaIndexPath is not null && File.Exists(spaIndexPath))
+{
+    app.MapFallback(async context =>
+    {
+        var ingressPath = context.Request.Headers["X-Ingress-Path"].ToString();
+        var html = await File.ReadAllTextAsync(spaIndexPath);
+        if (!string.IsNullOrEmpty(ingressPath))
+        {
+            html = html.Replace("<base href=\"/\"", $"<base href=\"{ingressPath}/\"");
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync(html);
+    });
+}
 
 // Startup initialization
 {
