@@ -129,6 +129,38 @@ if (spaIndexPath is not null && File.Exists(spaIndexPath))
     // Idempotent: applies any pending migrations, creates the DB if absent, no-ops when current.
     await dbContext.Database.MigrateAsync();
 
+    // Rehydrate charge sessions left open by a mid-charge restart. The OCPP telemetry maps are
+    // in-memory, so without this a charger that keeps charging across a restart has its meter
+    // values dropped (no tracked transaction) and the session is never continued. Runs before
+    // app.Run() starts Kestrel, so it always precedes the charger reconnecting. Seed the newest
+    // open session per connector; any older still-open rows are stale duplicates.
+    var openSessions = await dbContext.ChargeSessions
+        .AsNoTracking()
+        .Where(s => s.CompletedAt == null)
+        .OrderByDescending(s => s.StartedAt)
+        .ToListAsync();
+
+    var recorder = scope.ServiceProvider.GetRequiredService<ChargeSessionRecorder>();
+    var statusTracker = scope.ServiceProvider.GetRequiredService<ChargerStatusTracker>();
+    var seededConnectors = new HashSet<(string, int)>();
+    foreach (var session in openSessions)
+    {
+        if (!seededConnectors.Add((session.ChargePointId, session.ConnectorId)))
+        {
+            continue; // a newer open session already owns this connector
+        }
+
+        recorder.AdoptOpenSession(session.ChargePointId, session.ConnectorId, session.TransactionId);
+        statusTracker.SeedActiveTransaction(
+            session.ChargePointId, session.ConnectorId, session.TransactionId,
+            session.MeterStartWh / 1000.0, session.StartedAt);
+    }
+
+    if (openSessions.Count > 0)
+    {
+        startupLogger.LogInformation("Rehydrated {Count} open charge session(s) after startup.", seededConnectors.Count);
+    }
+
     var connectionManager = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
     await connectionManager.InitializeAsync();
 

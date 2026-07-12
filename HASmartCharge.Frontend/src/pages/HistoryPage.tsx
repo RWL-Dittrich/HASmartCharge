@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { BatteryCharging, ChevronDown, ChevronRight, Loader2, Trash2 } from 'lucide-react'
 import { TopBar } from '@/components/layout/TopBar'
+import { UsageChart } from '@/components/charts/UsageChart'
 import { useDeleteSession, useSessionDetail, useSessions } from '@/hooks/useSessions'
 import { usePriceSettings } from '@/hooks/useSettings'
-import { formatDateTime, formatDuration, formatKwh, formatMoney, formatPricePerKwh } from '@/lib/utils'
+import { ensureUtcSuffix, formatDateTime, formatDuration, formatKwh, formatMoney, formatPricePerKwh } from '@/lib/utils'
 
 function SessionRow({ transactionId, currency }: { transactionId: number; currency?: string | null }) {
   const [expanded, setExpanded] = useState(false)
@@ -98,11 +99,31 @@ export function HistoryPage() {
   const { data: sessions, isLoading, isError } = useSessions()
   const { data: priceSettings } = usePriceSettings()
 
+  // Newest-first (the backend already orders desc, but pin it so the table order never depends on that).
+  const sortedSessions = useMemo(
+    () =>
+      sessions
+        ? [...sessions].sort(
+            (a, b) =>
+              new Date(ensureUtcSuffix(b.startedAt)).getTime() -
+              new Date(ensureUtcSuffix(a.startedAt)).getTime(),
+          )
+        : undefined,
+    [sessions],
+  )
+
   return (
     <div className="flex flex-col h-full overflow-auto">
       <TopBar title="History" subtitle="Past charging sessions and their cost breakdown" />
 
       <div className="flex-1 p-6 space-y-4">
+        {sortedSessions && sortedSessions.length > 0 && (
+          <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4">
+            <h2 className="mb-3 text-sm font-semibold text-white">Usage over time</h2>
+            <UsageChart sessions={sortedSessions} currency={priceSettings?.currency} />
+          </div>
+        )}
+
         {isLoading && (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 text-blue-400 animate-spin" />
@@ -116,9 +137,9 @@ export function HistoryPage() {
           </div>
         )}
 
-        {sessions && (
+        {sortedSessions && (
           <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042]">
-            {sessions.length === 0 ? (
+            {sortedSessions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-[#8892a4]">
                 <BatteryCharging className="h-8 w-8 mb-2 opacity-40" />
                 <span className="text-sm">No charge sessions yet</span>
@@ -137,7 +158,7 @@ export function HistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sessions.map((s) => (
+                  {sortedSessions.map((s) => (
                     <SessionRow
                       key={s.transactionId}
                       transactionId={s.transactionId}

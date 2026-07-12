@@ -125,6 +125,26 @@ public class ChargerStatusTracker : IChargerTelemetrySink
 
     #endregion
 
+    /// <summary>
+    /// Restores the live transaction of a connector after a backend restart. The tracker is a pure
+    /// in-memory read model, so a mid-charge restart otherwise loses the active transaction until
+    /// the charger re-announces it. Seeded from the still-open DB session so the dashboard's live
+    /// session energy/cost tiles keep working across the restart. Overwritten as soon as the
+    /// charger sends a fresh StartTransaction or moves the connector to a terminal state.
+    /// </summary>
+    public void SeedActiveTransaction(string chargePointId, int connectorId, int transactionId, double meterStartKwh, DateTime transactionStartTimeUtc)
+    {
+        var charger = GetOrAdd(chargePointId);
+        var connector = charger.Connectors.GetOrAdd(connectorId, id => new ConnectorStatus { ConnectorId = id });
+        connector.ActiveTransactionId = transactionId;
+        connector.TransactionStartTime = DateTime.SpecifyKind(transactionStartTimeUtc, DateTimeKind.Utc);
+        connector.MeterStartKwh = meterStartKwh;
+        charger.LastUpdated = DateTime.UtcNow;
+        _logger.LogInformation(
+            "Seeded active transaction {TransactionId} on {ChargePointId} connector {ConnectorId} after restart",
+            transactionId, chargePointId, connectorId);
+    }
+
     private ChargerStatus GetOrAdd(string chargePointId) =>
         _chargerStatuses.GetOrAdd(chargePointId, id => new ChargerStatus { ChargePointId = id });
 

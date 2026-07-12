@@ -55,6 +55,20 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
         _logger = logger;
     }
 
+    /// <summary>
+    /// Re-tracks an open (not-yet-finalized) session after a restart, so meter values that keep
+    /// arriving on the same connector fold into the existing row instead of being dropped. Called
+    /// at startup for every session still open in the DB. Idempotent: a later StartTransaction for
+    /// a new physical session simply overwrites the connector mapping.
+    /// </summary>
+    public void AdoptOpenSession(string chargePointId, int connectorId, int transactionId)
+    {
+        _connectorTransactions[ConnectorKey(chargePointId, connectorId)] = transactionId;
+        _logger.LogInformation(
+            "Re-adopted open charge session {TransactionId} on {ChargePointId} connector {ConnectorId} after restart.",
+            transactionId, chargePointId, connectorId);
+    }
+
     #region IChargerTelemetrySink
 
     public void OnConnected(string chargePointId)

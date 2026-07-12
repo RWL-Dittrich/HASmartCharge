@@ -14,7 +14,7 @@ namespace HASmartCharge.Backend.Services;
 /// </summary>
 public class ChargeOrchestratorService : BackgroundService
 {
-    private static readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(60);
 
     private static readonly ChargePlanStatus[] _relevantStatuses =
     [
