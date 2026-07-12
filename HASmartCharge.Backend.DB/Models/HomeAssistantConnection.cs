@@ -14,6 +14,12 @@ public class HomeAssistantConnection
     public required string BaseUrl { get; set; }
     
     /// <summary>
+    /// The OAuth client_id used during authorization (this app's own URL).
+    /// HA requires the SAME client_id on token refresh — not the HA base URL.
+    /// </summary>
+    public string ClientId { get; set; } = string.Empty;
+
+    /// <summary>
     /// The access token for API calls
     /// </summary>
     public required string AccessToken { get; set; }

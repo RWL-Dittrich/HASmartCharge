@@ -34,7 +34,7 @@ public class SessionManager : ISessionManager
 
     public void UnregisterSession(string chargePointId)
     {
-        if (_sessionsByChargePointId.TryRemove(chargePointId, out IChargePointSession? session))
+        if (_sessionsByChargePointId.TryRemove(chargePointId, out var session))
         {
             _sessionsByConnectionId.TryRemove(session.Connection.ConnectionId, out _);
 
@@ -47,19 +47,19 @@ public class SessionManager : ISessionManager
 
     public IChargePointSession? GetByChargePointId(string chargePointId)
     {
-        _sessionsByChargePointId.TryGetValue(chargePointId, out IChargePointSession? session);
+        _sessionsByChargePointId.TryGetValue(chargePointId, out var session);
         return session;
     }
 
     public IChargePointSession? GetByConnectionId(string connectionId)
     {
-        _sessionsByConnectionId.TryGetValue(connectionId, out IChargePointSession? session);
+        _sessionsByConnectionId.TryGetValue(connectionId, out var session);
         return session;
     }
 
     public bool IsConnected(string chargePointId)
     {
-        return _sessionsByChargePointId.TryGetValue(chargePointId, out IChargePointSession? session) 
+        return _sessionsByChargePointId.TryGetValue(chargePointId, out var session) 
                && session.IsActive 
                && session.Connection.IsOpen;
     }

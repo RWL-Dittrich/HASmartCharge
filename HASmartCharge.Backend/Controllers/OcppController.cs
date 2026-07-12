@@ -1,4 +1,3 @@
-using System.Net.WebSockets;
 using HASmartCharge.Backend.OCPP.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 
@@ -33,9 +32,9 @@ public class OcppController : ControllerBase
         {
             _logger.LogInformation("Charge point connection request: {ChargePointId}", chargePointId);
 
-            using WebSocket webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
+            using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
             
-            string remoteEndPoint = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var remoteEndPoint = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             
             await _orchestrator.HandleConnectionAsync(webSocket, chargePointId, remoteEndPoint);
         }

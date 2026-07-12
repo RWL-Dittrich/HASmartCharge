@@ -34,10 +34,10 @@ public class OcppMessageRouter : IOcppMessageRouter
                 connection.ConnectionId, rawMessage);
 
             // Parse the OCPP message
-            OcppMessage message = OcppMessage.Parse(rawMessage);
+            var message = OcppMessage.Parse(rawMessage);
 
             // Get the session for this connection
-            IChargePointSession? session = _sessionManager.GetByConnectionId(connection.ConnectionId);
+            var session = _sessionManager.GetByConnectionId(connection.ConnectionId);
             if (session == null)
             {
                 _logger.LogWarning("[{ConnectionId}] No session found for connection",
@@ -78,7 +78,7 @@ public class OcppMessageRouter : IOcppMessageRouter
         OcppMessage message,
         CancellationToken cancellationToken)
     {
-        string action = message.Action ?? string.Empty;
+        var action = message.Action ?? string.Empty;
 
         _logger.LogDebug("[{ChargePointId}] Handling CALL: {Action}",
             session.ChargePointId, action);
@@ -86,10 +86,10 @@ public class OcppMessageRouter : IOcppMessageRouter
         try
         {
             // Route to the session's handler
-            object response = await session.HandleCallAsync(action, message.Payload, cancellationToken);
+            var response = await session.HandleCallAsync(action, message.Payload, cancellationToken);
 
             // Create CallResult response
-            OcppMessage responseMessage = new OcppMessage
+            var responseMessage = new OcppMessage
             {
                 MessageType = (int)OcppMessageType.CallResult,
                 MessageId = message.MessageId,
@@ -130,7 +130,7 @@ public class OcppMessageRouter : IOcppMessageRouter
         OcppMessage message,
         CancellationToken cancellationToken)
     {
-        string errorCode = message.Action ?? "UnknownError";
+        var errorCode = message.Action ?? "UnknownError";
         
         _logger.LogWarning("[{ChargePointId}] Received CallError for message {MessageId}: {ErrorCode}",
             session.ChargePointId, message.MessageId, errorCode);
@@ -141,7 +141,7 @@ public class OcppMessageRouter : IOcppMessageRouter
 
     private string CreateErrorResponse(string messageId, string errorCode, string errorDescription)
     {
-        OcppErrorMessage errorMessage = new OcppErrorMessage
+        var errorMessage = new OcppErrorMessage
         {
             MessageId = messageId,
             ErrorCode = errorCode,

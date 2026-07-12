@@ -18,9 +18,9 @@ public class OcppConnectionOrchestrator
     private readonly WebSocketMessageService _messageService;
     private readonly ISessionManager _sessionManager;
     private readonly IOcppMessageRouter _messageRouter;
-    private readonly ChargerStatusTracker _statusTracker;
     private readonly ChargerConfigurationService _configurationService;
-    private readonly IOcppPersistence _persistence;
+    private readonly IChargerTelemetrySink _telemetry;
+    private readonly IOcppChargerConfigurationProvider _configProvider;
 
     public OcppConnectionOrchestrator(
         ILogger<OcppConnectionOrchestrator> logger,
@@ -28,18 +28,18 @@ public class OcppConnectionOrchestrator
         WebSocketMessageService messageService,
         ISessionManager sessionManager,
         IOcppMessageRouter messageRouter,
-        ChargerStatusTracker statusTracker,
         ChargerConfigurationService configurationService,
-        IOcppPersistence persistence)
+        IChargerTelemetrySink telemetry,
+        IOcppChargerConfigurationProvider configProvider)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
         _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
-        _statusTracker = statusTracker ?? throw new ArgumentNullException(nameof(statusTracker));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
-        _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
+        _telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
+        _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
     }
 
     /// <summary>
@@ -58,8 +58,8 @@ public class OcppConnectionOrchestrator
             remoteEndPoint);
 
         // Create transport connection
-        string connectionId = Guid.NewGuid().ToString();
-        WebSocketConnection connection = new WebSocketConnection(
+        var connectionId = Guid.NewGuid().ToString();
+        var connection = new WebSocketConnection(
             webSocket,
             connectionId,
             remoteEndPoint,
@@ -70,9 +70,9 @@ public class OcppConnectionOrchestrator
             chargePointId,
             connection,
             _loggerFactory.CreateLogger<ChargePointSession>(),
-            _statusTracker,
             _configurationService,
-            _persistence);
+            _telemetry,
+            _configProvider);
 
         // Register session
         _sessionManager.RegisterSession(session);
@@ -83,7 +83,7 @@ public class OcppConnectionOrchestrator
             await session.InitializeAsync(cancellationToken);
 
             // Process messages
-            await ProcessMessagesAsync(connection, cancellationToken);
+            await ProcessMessagesAsync(connection, chargePointId, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -101,12 +101,13 @@ public class OcppConnectionOrchestrator
 
     private async Task ProcessMessagesAsync(
         WebSocketConnection connection,
+        string chargePointId,
         CancellationToken cancellationToken)
     {
         while (connection.IsOpen && !cancellationToken.IsCancellationRequested)
         {
             // Receive message
-            string? rawMessage = await connection.ReceiveAsync(cancellationToken);
+            var rawMessage = await connection.ReceiveAsync(cancellationToken);
 
             if (rawMessage == null)
             {
@@ -114,12 +115,15 @@ public class OcppConnectionOrchestrator
                 break;
             }
 
+            OcppRawLog.Append(chargePointId, "in", rawMessage);
+
             // Route message and get response
-            string? response = await _messageRouter.RouteAsync(connection, rawMessage, cancellationToken);
+            var response = await _messageRouter.RouteAsync(connection, rawMessage, cancellationToken);
 
             // Send response if needed
             if (!string.IsNullOrEmpty(response))
             {
+                OcppRawLog.Append(chargePointId, "out", response);
                 await connection.SendAsync(response, cancellationToken);
             }
         }

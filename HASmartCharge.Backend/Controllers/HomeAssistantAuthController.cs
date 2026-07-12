@@ -1,6 +1,4 @@
-﻿using HASmartCharge.Backend.DB.Models;
-using HASmartCharge.Backend.Models.Auth;
-using HASmartCharge.Backend.Services.Auth.Interfaces;
+﻿using HASmartCharge.Backend.HomeAssistant.Auth.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HASmartCharge.Backend.Controllers;
@@ -47,12 +45,12 @@ public class HomeAssistantAuthController : ControllerBase
         try
         {
             // Build both client ID and redirect URI from the request host
-            string scheme = Request.Scheme; // http or https
-            string? host = Request.Host.Value; // includes port if present
-            string clientId = $"{scheme}://{host}";
-            string redirectUri = $"{scheme}://{host}/api/homeassistant/auth/callback";
+            var scheme = Request.Scheme; // http or https
+            var host = Request.Host.Value; // includes port if present
+            var clientId = $"{scheme}://{host}";
+            var redirectUri = $"{scheme}://{host}/api/homeassistant/auth/callback";
             
-            string authorizationUrl = _authService.GenerateAuthorizationUrl(baseUrl, redirectUri, clientId);
+            var authorizationUrl = _authService.GenerateAuthorizationUrl(baseUrl, redirectUri, clientId);
             _logger.LogInformation("Redirecting to Home Assistant with client ID: {ClientId} and redirect URI: {RedirectUri}", 
                 clientId, redirectUri);
             
@@ -88,7 +86,7 @@ public class HomeAssistantAuthController : ControllerBase
 
         try
         {
-            bool success = _authService.ValidateAndStoreAuthorizationCode(state, code);
+            var success = _authService.ValidateAndStoreAuthorizationCode(state, code);
             
             if (!success)
             {
@@ -97,7 +95,7 @@ public class HomeAssistantAuthController : ControllerBase
             }
 
             // Get the auth state to retrieve the base URL
-            AuthState? authState = _authService.GetAuthState(state);
+            var authState = _authService.GetAuthState(state);
             if (authState == null)
             {
                 _logger.LogWarning("Auth state not found after validation");
@@ -105,13 +103,13 @@ public class HomeAssistantAuthController : ControllerBase
             }
 
             // Build client ID from request
-            string scheme = Request.Scheme;
-            string? host = Request.Host.Value;
-            string clientId = $"{scheme}://{host}";
+            var scheme = Request.Scheme;
+            var host = Request.Host.Value;
+            var clientId = $"{scheme}://{host}";
 
             // Exchange code for tokens
             _logger.LogInformation("Exchanging authorization code for tokens");
-            HomeAssistantConnection connection = await _connectionManager.ExchangeCodeForTokensAsync(code, authState.BaseUrl, clientId);
+            var connection = await _connectionManager.ExchangeCodeForTokensAsync(code, authState.BaseUrl, clientId);
             
             _logger.LogInformation("Successfully established connection to Home Assistant");
             
@@ -143,7 +141,7 @@ public class HomeAssistantAuthController : ControllerBase
             return BadRequest(new { error = "State parameter is required" });
         }
 
-        string? code = _authService.GetAuthorizationCode(state);
+        var code = _authService.GetAuthorizationCode(state);
         
         if (code == null)
         {
@@ -173,7 +171,7 @@ public class HomeAssistantAuthController : ControllerBase
             });
         }
 
-        HomeAssistantConnection? connection = _connectionManager.GetConnection();
+        var connection = _connectionManager.GetConnection();
         if (connection == null)
         {
             return Ok(new

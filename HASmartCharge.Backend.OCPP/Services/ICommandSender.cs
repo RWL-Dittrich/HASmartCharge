@@ -16,9 +16,9 @@ public interface ICommandSender
 /// </summary>
 public class SessionCommandSender : ICommandSender
 {
-    private readonly Domain.ISessionManager _sessionManager;
+    private readonly ISessionManager _sessionManager;
 
-    public SessionCommandSender(Domain.ISessionManager sessionManager)
+    public SessionCommandSender(ISessionManager sessionManager)
     {
         _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
     }
@@ -29,7 +29,7 @@ public class SessionCommandSender : ICommandSender
         TRequest request,
         CancellationToken cancellationToken = default)
     {
-        IChargePointSession? session = _sessionManager.GetByChargePointId(chargePointId);
+        var session = _sessionManager.GetByChargePointId(chargePointId);
         if (session == null)
         {
             return OcppCommandResult.FromCallError("NotConnected", $"Charge point '{chargePointId}' is not connected");

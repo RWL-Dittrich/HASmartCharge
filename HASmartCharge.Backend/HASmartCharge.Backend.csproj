@@ -16,8 +16,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\HASmartCharge.Core\HASmartCharge.Core.csproj" />
       <ProjectReference Include="..\HASmartCharge.Backend.DB\HASmartCharge.Backend.DB.csproj" />
       <ProjectReference Include="..\HASmartCharge.Backend.OCPP\HASmartCharge.Backend.OCPP.csproj" />
+      <ProjectReference Include="..\HASmartCharge.Backend.HomeAssistant\HASmartCharge.Backend.HomeAssistant.csproj" />
     </ItemGroup>
 
 </Project>

@@ -68,9 +68,14 @@ public class ConnectorStatus
     public DateTime LastStatusUpdate { get; set; }
     
     public int? ActiveTransactionId { get; set; }
-    
+
     public DateTime? TransactionStartTime { get; set; }
-    
+
+    /// <summary>
+    /// Energy register (kWh) at transaction start — session energy = current register − this.
+    /// </summary>
+    public double? MeterStartKwh { get; set; }
+
     public string? IdTag { get; set; }
 }
 
@@ -143,7 +148,7 @@ public class MeasurandValue
     public decimal? AsDecimal()
     {
         if (decimal.TryParse(Value, System.Globalization.NumberStyles.Any, 
-            System.Globalization.CultureInfo.InvariantCulture, out decimal result))
+            System.Globalization.CultureInfo.InvariantCulture, out var result))
         {
             return result;
         }
@@ -155,7 +160,7 @@ public class MeasurandValue
     /// </summary>
     public int? AsInt()
     {
-        if (int.TryParse(Value, out int result))
+        if (int.TryParse(Value, out var result))
         {
             return result;
         }
