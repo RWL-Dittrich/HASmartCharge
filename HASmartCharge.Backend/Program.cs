@@ -65,12 +65,17 @@ builder.Services.AddSingleton<IChargerControl, ChargerControl>();
 builder.Services.AddScoped<IPriceFetcher, EpexPriceFetcher>();
 builder.Services.AddHostedService<PriceFetchService>();
 
-// Plan: cheapest-hour schedule calculator wiring
+// Plan: cheapest-hour schedule calculator wiring + shared plan factory (manual + auto-arm)
 builder.Services.AddScoped<IPlanScheduleService, PlanScheduleService>();
+builder.Services.AddScoped<IChargePlanFactory, ChargePlanFactory>();
+
+// Auto-schedule: recurring weekly departure + overrides → next-deadline resolver
+builder.Services.AddScoped<IAutoScheduleResolver, AutoScheduleResolver>();
 
 // Charge control: HA start/stop wrapper, manual override window, and the orchestrator loop
 builder.Services.AddScoped<IChargeControlService, ChargeControlService>();
 builder.Services.AddSingleton<ManualOverrideState>();
+builder.Services.AddSingleton<PlugStateTracker>();
 builder.Services.AddHostedService<ChargeOrchestratorService>();
 
 var app = builder.Build();

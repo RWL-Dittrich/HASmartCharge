@@ -17,11 +17,13 @@ public class PlanController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IPlanScheduleService _scheduleService;
+    private readonly IChargePlanFactory _planFactory;
 
-    public PlanController(ApplicationDbContext dbContext, IPlanScheduleService scheduleService)
+    public PlanController(ApplicationDbContext dbContext, IPlanScheduleService scheduleService, IChargePlanFactory planFactory)
     {
         _dbContext = dbContext;
         _scheduleService = scheduleService;
+        _planFactory = planFactory;
     }
 
     /// <summary>The most recent plan that's still pending or active.</summary>
@@ -67,38 +69,8 @@ public class PlanController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreatePlan([FromBody] CreatePlanRequest request, CancellationToken ct)
     {
-        var car = await _dbContext.CarSettings.AsNoTracking().FirstAsync(ct);
         var deadlineUtc = EnsureUtc(request.DeadlineUtc);
-        var targetSocPercent = request.TargetSocPercent ?? car.TargetSocPercent;
-
-        var existingPlans = await _dbContext.ChargePlans
-            .Where(p => p.Status == ChargePlanStatus.Pending || p.Status == ChargePlanStatus.Active)
-            .ToListAsync(ct);
-
-        var now = DateTime.UtcNow;
-        foreach (var existing in existingPlans)
-        {
-            existing.Status = ChargePlanStatus.Cancelled;
-            existing.CompletedAt = now;
-        }
-
-        var calc = await _scheduleService.ComputeAsync(deadlineUtc, targetSocPercent, ct);
-
-        var plan = new ChargePlan
-        {
-            DeadlineUtc = deadlineUtc,
-            TargetSocPercent = targetSocPercent,
-            StartSocPercent = calc.SocPercent.HasValue ? (int)Math.Round(calc.SocPercent.Value) : null,
-            Status = ChargePlanStatus.Active,
-            EstimatedEnergyKwh = calc.Schedule.EnergyNeededKwh,
-            EstimatedCost = calc.Schedule.EstimatedCost,
-            SelectedHoursJson = JsonSerializer.Serialize(calc.Schedule.SelectedHourStartsUtc),
-            CreatedAt = now
-        };
-
-        _dbContext.ChargePlans.Add(plan);
-        await _dbContext.SaveChangesAsync(ct);
-
+        var plan = await _planFactory.CreateAsync(deadlineUtc, request.TargetSocPercent, ct);
         return Ok(ToDto(plan));
     }
 

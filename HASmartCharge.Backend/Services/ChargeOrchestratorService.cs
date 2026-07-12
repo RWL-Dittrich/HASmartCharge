@@ -14,22 +14,33 @@ namespace HASmartCharge.Backend.Services;
 /// </summary>
 public class ChargeOrchestratorService : BackgroundService
 {
-    private static readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan _tickInterval = TimeSpan.FromSeconds(30);
 
     private static readonly ChargePlanStatus[] _relevantStatuses =
     [
         ChargePlanStatus.Pending, ChargePlanStatus.Active, ChargePlanStatus.MissedDeadline
     ];
 
+    // OCPP connector statuses that mean a cable is inserted (as opposed to Available/Unavailable/Faulted).
+    private static readonly HashSet<string> _pluggedInStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Preparing", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing"
+    };
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ManualOverrideState _overrideState;
+    private readonly PlugStateTracker _plugState;
     private readonly ILogger<ChargeOrchestratorService> _logger;
 
     public ChargeOrchestratorService(
-        IServiceProvider serviceProvider, ManualOverrideState overrideState, ILogger<ChargeOrchestratorService> logger)
+        IServiceProvider serviceProvider,
+        ManualOverrideState overrideState,
+        PlugStateTracker plugState,
+        ILogger<ChargeOrchestratorService> logger)
     {
         _serviceProvider = serviceProvider;
         _overrideState = overrideState;
+        _plugState = plugState;
         _logger = logger;
     }
 
@@ -70,6 +81,11 @@ public class ChargeOrchestratorService : BackgroundService
         var scheduleService = services.GetRequiredService<IPlanScheduleService>();
         var chargeControl = services.GetRequiredService<IChargeControlService>();
         var statusTracker = services.GetRequiredService<ChargerStatusTracker>();
+
+        // Auto-schedule: drop past overrides, then create a plan on the plug-in rising edge
+        // before we look for an active one.
+        await services.GetRequiredService<IAutoScheduleResolver>().SweepPastOverridesAsync(DateTime.UtcNow, ct);
+        await TryAutoArmAsync(services, dbContext, statusTracker, haControl, ct);
 
         var plan = await dbContext.ChargePlans
             .Where(p => _relevantStatuses.Contains(p.Status))
@@ -171,6 +187,79 @@ public class ChargeOrchestratorService : BackgroundService
                 "Charge orchestrator tick: plan {PlanId}, SoC {Soc}%, shouldCharge={ShouldCharge}, isCharging={IsCharging}, no transition.",
                 plan.Id, soc, shouldCharge, isCharging);
         }
+    }
+
+    /// <summary>
+    /// When auto-scheduling is enabled, detects the plug-in rising edge and, if no plan is already
+    /// in flight, creates one for the next departure resolved from the weekly pattern + overrides.
+    /// </summary>
+    private async Task TryAutoArmAsync(
+        IServiceProvider services,
+        ApplicationDbContext dbContext,
+        ChargerStatusTracker statusTracker,
+        IHomeAssistantControl haControl,
+        CancellationToken ct)
+    {
+        var auto = await dbContext.AutoScheduleSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        if (auto is null || !auto.Enabled)
+        {
+            return;
+        }
+
+        var charger = await dbContext.ChargerSettings.AsNoTracking().FirstAsync(ct);
+        var car = await dbContext.CarSettings.AsNoTracking().FirstAsync(ct);
+
+        var pluggedNow = await IsPluggedInAsync(statusTracker, haControl, charger, car, ct);
+        if (!_plugState.RegisterAndDetectRisingEdge(pluggedNow))
+        {
+            return;
+        }
+
+        var hasPlan = await dbContext.ChargePlans.AnyAsync(p => _relevantStatuses.Contains(p.Status), ct);
+        if (hasPlan)
+        {
+            _logger.LogInformation("Auto-schedule: car plugged in but a plan is already active; not creating another.");
+            return;
+        }
+
+        var resolver = services.GetRequiredService<IAutoScheduleResolver>();
+        var next = await resolver.ResolveNextDepartureAsync(DateTime.UtcNow, ct);
+        if (next is null)
+        {
+            _logger.LogInformation("Auto-schedule: car plugged in but no upcoming departure configured; nothing to arm.");
+            return;
+        }
+
+        var factory = services.GetRequiredService<IChargePlanFactory>();
+        var plan = await factory.CreateAsync(next.DeadlineUtc, next.TargetSocPercent, ct);
+        _logger.LogInformation(
+            "Auto-schedule: car plugged in, created plan {PlanId} with deadline {DeadlineUtc:o}, target {Target}%.",
+            plan.Id, next.DeadlineUtc, plan.TargetSocPercent);
+    }
+
+    /// <summary>
+    /// Is the car plugged in? Primary signal is the OCPP connector status; if a HA plugged-in
+    /// binary_sensor is configured, it's OR'd in.
+    /// </summary>
+    private static async Task<bool> IsPluggedInAsync(
+        ChargerStatusTracker statusTracker, IHomeAssistantControl haControl, ChargerSettings charger, CarSettings car, CancellationToken ct)
+    {
+        var connector = statusTracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId);
+        if (connector?.Status is { } status && _pluggedInStatuses.Contains(status))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(car.HaPluggedInEntityId))
+        {
+            return false;
+        }
+
+        var haState = await haControl.GetStateAsync(car.HaPluggedInEntityId, ct);
+        return haState is not null && (
+            haState.Equals("on", StringComparison.OrdinalIgnoreCase) ||
+            haState.Equals("plugged", StringComparison.OrdinalIgnoreCase) ||
+            haState.Equals("connected", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
