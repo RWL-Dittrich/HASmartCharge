@@ -9,6 +9,7 @@ using HASmartCharge.Backend.OCPP.Application;
 using HASmartCharge.Backend.OCPP.Domain;
 using HASmartCharge.Backend.OCPP.Infrastructure;
 using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.Services;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -33,6 +34,12 @@ builder.Services.AddSingleton<IHomeAssistantConnectionManager, HomeAssistantConn
 builder.Services.AddHostedService<AuthStateCleanupService>();
 builder.Services.AddHostedService<TokenRefreshService>();
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
+builder.Services.AddScoped<IHomeAssistantControl, HomeAssistantControl>();
+
+// OCPP: temporary raw-frame diagnostic log (Ocpp:RawFrameLog section).
+OcppRawLog.Configure(
+    builder.Configuration.GetValue("Ocpp:RawFrameLog:Enabled", false),
+    builder.Configuration["Ocpp:RawFrameLog:Path"]);
 
 // OCPP: transport, routing, sessions
 builder.Services.AddSingleton<WebSocketMessageService>();
@@ -40,14 +47,31 @@ builder.Services.AddSingleton<ISessionManager, SessionManager>();
 builder.Services.AddSingleton<IOcppMessageRouter, OcppMessageRouter>();
 builder.Services.AddSingleton<OcppConnectionOrchestrator>();
 
-// OCPP: telemetry sink (live in-memory charger status)
+// OCPP: telemetry sinks (live in-memory charger status + DB-backed session/cost recording),
+// fanned out to both from the single IChargerTelemetrySink the OCPP session layer calls.
 builder.Services.AddSingleton<ChargerStatusTracker>();
-builder.Services.AddSingleton<IChargerTelemetrySink>(sp => sp.GetRequiredService<ChargerStatusTracker>());
+builder.Services.AddSingleton<ChargeSessionRecorder>();
+builder.Services.AddSingleton<IChargerTelemetrySink>(sp => new TelemetryFanout(
+    [sp.GetRequiredService<ChargerStatusTracker>(), sp.GetRequiredService<ChargeSessionRecorder>()],
+    sp.GetRequiredService<ILogger<TelemetryFanout>>()));
 
 // OCPP: outbound command surface (config push, availability, unlock)
 builder.Services.AddSingleton<ICommandSender, SessionCommandSender>();
+builder.Services.AddSingleton<IOcppChargerConfigurationProvider, DbOcppChargerConfigurationProvider>();
 builder.Services.AddSingleton<ChargerConfigurationService>();
 builder.Services.AddSingleton<IChargerControl, ChargerControl>();
+
+// Prices: EPEX fetch + cache
+builder.Services.AddScoped<IPriceFetcher, EpexPriceFetcher>();
+builder.Services.AddHostedService<PriceFetchService>();
+
+// Plan: cheapest-hour schedule calculator wiring
+builder.Services.AddScoped<IPlanScheduleService, PlanScheduleService>();
+
+// Charge control: HA start/stop wrapper, manual override window, and the orchestrator loop
+builder.Services.AddScoped<IChargeControlService, ChargeControlService>();
+builder.Services.AddSingleton<ManualOverrideState>();
+builder.Services.AddHostedService<ChargeOrchestratorService>();
 
 var app = builder.Build();
 var startupLogger = app.Logger;

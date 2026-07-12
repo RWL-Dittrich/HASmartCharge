@@ -18,23 +18,29 @@ public class ChargePointSession : IChargePointSession
     private readonly ILogger<ChargePointSession> _logger;
     private readonly ChargerConfigurationService _configurationService;
     private readonly IChargerTelemetrySink _telemetry;
+    private readonly IOcppChargerConfigurationProvider _configProvider;
     private int _messageIdCounter;
     private int _transactionIdCounter = (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % 1_000_000);
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<OcppCommandResult>> _pendingCommands = new();
+    // Active transaction per connector, used to answer retransmitted StartTransaction requests
+    // with the SAME transaction id instead of minting a new one (chargers retry when a reply is slow).
+    private readonly ConcurrentDictionary<int, (int TransactionId, int MeterStart)> _activeTransactions = new();
 
     public ChargePointSession(
         string chargePointId,
         IConnection connection,
         ILogger<ChargePointSession> logger,
         ChargerConfigurationService configurationService,
-        IChargerTelemetrySink telemetry)
+        IChargerTelemetrySink telemetry,
+        IOcppChargerConfigurationProvider configProvider)
     {
         ChargePointId = chargePointId ?? throw new ArgumentNullException(nameof(chargePointId));
         Connection = connection ?? throw new ArgumentNullException(nameof(connection));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
         _telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
+        _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
 
         ConnectedAt = DateTime.UtcNow;
         IsActive = true;
@@ -85,7 +91,7 @@ public class ChargePointSession : IChargePointSession
 
         return action switch
         {
-            "BootNotification" => HandleBootNotification(payload),
+            "BootNotification" => await HandleBootNotificationAsync(payload, cancellationToken),
             "Heartbeat" => HandleHeartbeat(),
             "Authorize" => HandleAuthorize(payload),
             "StartTransaction" => HandleStartTransaction(payload),
@@ -116,7 +122,7 @@ public class ChargePointSession : IChargePointSession
 
     #region Inbound OCPP Handlers (CP -> CS) — all auto-accepted
 
-    private object HandleBootNotification(JsonElement payload)
+    private async Task<object> HandleBootNotificationAsync(JsonElement payload, CancellationToken cancellationToken)
     {
         var request = JsonSerializer.Deserialize<BootNotificationRequest>(payload.GetRawText());
 
@@ -134,11 +140,13 @@ public class ChargePointSession : IChargePointSession
             });
         }
 
+        var config = await _configProvider.GetConfigurationAsync(ChargePointId, cancellationToken);
+
         return new BootNotificationResponse
         {
             Status = "Accepted",
             CurrentTime = DateTime.UtcNow,
-            Interval = 60
+            Interval = config.HeartbeatIntervalSeconds
         };
     }
 
@@ -166,7 +174,23 @@ public class ChargePointSession : IChargePointSession
         if (request is null)
             return new StartTransactionResponse { TransactionId = 0, IdTagInfo = new IdTagInfo { Status = "Invalid" } };
 
+        // Retransmission of the transaction we already accepted on this connector:
+        // answer with the same id and don't emit a second telemetry event.
+        if (_activeTransactions.TryGetValue(request.ConnectorId, out var active) && active.MeterStart == request.MeterStart)
+        {
+            _logger.LogWarning(
+                "[{ChargePointId}] Duplicate StartTransaction on connector {Connector} (MeterStart={MeterStart}); replying with existing TransactionId={TransactionId}",
+                ChargePointId, request.ConnectorId, request.MeterStart, active.TransactionId);
+
+            return new StartTransactionResponse
+            {
+                TransactionId = active.TransactionId,
+                IdTagInfo = new IdTagInfo { Status = "Accepted", ExpiryDate = DateTime.UtcNow.AddHours(24) }
+            };
+        }
+
         var transactionId = Interlocked.Increment(ref _transactionIdCounter);
+        _activeTransactions[request.ConnectorId] = (transactionId, request.MeterStart);
 
         _logger.LogInformation(
             "[{ChargePointId}] StartTransaction: Connector={Connector}, IdTag={IdTag}, MeterStart={MeterStart}, TransactionId={TransactionId}",
@@ -193,6 +217,15 @@ public class ChargePointSession : IChargePointSession
 
         if (request != null)
         {
+            foreach (var (connectorId, active) in _activeTransactions)
+            {
+                if (active.TransactionId == request.TransactionId)
+                {
+                    _activeTransactions.TryRemove(connectorId, out _);
+                    break;
+                }
+            }
+
             _telemetry.OnTransactionStopped(
                 ChargePointId, request.TransactionId, request.MeterStop, request.Reason,
                 new DateTimeOffset(request.Timestamp, TimeSpan.Zero));

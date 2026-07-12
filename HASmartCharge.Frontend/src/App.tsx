@@ -1,15 +1,17 @@
 import { Routes, Route } from "react-router"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { DashboardPage } from "@/pages/DashboardPage"
-import { ChargersPage } from "@/pages/ChargersPage"
-import { AnalyticsPage } from "@/pages/AnalyticsPage"
+import { SchedulePage } from "@/pages/SchedulePage"
+import { SettingsPage } from "@/pages/SettingsPage"
+import { HistoryPage } from "@/pages/HistoryPage"
 export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="chargers" element={<ChargersPage />} />
-        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="schedule" element={<SchedulePage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="history" element={<HistoryPage />} />
       </Route>
     </Routes>
   )

@@ -68,9 +68,14 @@ public class ConnectorStatus
     public DateTime LastStatusUpdate { get; set; }
     
     public int? ActiveTransactionId { get; set; }
-    
+
     public DateTime? TransactionStartTime { get; set; }
-    
+
+    /// <summary>
+    /// Energy register (kWh) at transaction start — session energy = current register − this.
+    /// </summary>
+    public double? MeterStartKwh { get; set; }
+
     public string? IdTag { get; set; }
 }
 

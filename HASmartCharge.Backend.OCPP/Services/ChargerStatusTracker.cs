@@ -60,6 +60,19 @@ public class ChargerStatusTracker : IChargerTelemetrySink
         connector.ErrorCode = errorCode ?? "NoError";
         connector.LastStatusUpdate = DateTime.UtcNow;
         charger.LastUpdated = DateTime.UtcNow;
+
+        // Some chargers never send StopTransaction; they end a transaction by moving to a
+        // terminal state. Clear the live transaction so status/live cost stop reflecting it
+        // (ChargeSessionRecorder finalizes the persisted session off the same transition).
+        if (connector.ActiveTransactionId is not null
+            && status is "Finishing" or "Available" or "Faulted")
+        {
+            connector.ActiveTransactionId = null;
+            connector.TransactionStartTime = null;
+            connector.MeterStartKwh = null;
+            connector.IdTag = null;
+        }
+
         _logger.LogDebug("Updated status for {ChargePointId} connector {ConnectorId}: {Status}",
             chargePointId, connectorId, status);
     }
@@ -70,6 +83,7 @@ public class ChargerStatusTracker : IChargerTelemetrySink
         var connector = charger.Connectors.GetOrAdd(connectorId, id => new ConnectorStatus { ConnectorId = id });
         connector.ActiveTransactionId = transactionId;
         connector.TransactionStartTime = startedAt.UtcDateTime;
+        connector.MeterStartKwh = meterStartWh / 1000.0;
         connector.IdTag = idTag;
         charger.LastUpdated = DateTime.UtcNow;
         _logger.LogInformation("Transaction {TransactionId} started on {ChargePointId} connector {ConnectorId}",
@@ -85,6 +99,7 @@ public class ChargerStatusTracker : IChargerTelemetrySink
             {
                 connector.ActiveTransactionId = null;
                 connector.TransactionStartTime = null;
+                connector.MeterStartKwh = null;
                 connector.IdTag = null;
                 charger.LastUpdated = DateTime.UtcNow;
                 _logger.LogInformation("Transaction {TransactionId} stopped on {ChargePointId} connector {ConnectorId}",
@@ -132,7 +147,8 @@ public class ChargerStatusTracker : IChargerTelemetrySink
         switch (measurand)
         {
             case "Energy.Active.Import.Register":
-                if (value.Unit?.Equals("wh", StringComparison.OrdinalIgnoreCase) ?? false)
+                // OCPP 1.6: a missing unit means Wh for energy measurands.
+                if (value.Unit is null || value.Unit.Equals("wh", StringComparison.OrdinalIgnoreCase))
                 {
                     value.Value = (float.Parse(value.Value, CultureInfo.InvariantCulture) / 1000f).ToString(CultureInfo.InvariantCulture); // Wh -> kWh
                     value.Unit = "kWh";

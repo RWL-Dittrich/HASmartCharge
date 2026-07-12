@@ -1,9 +1,8 @@
 ﻿import { NavLink } from 'react-router'
 import {
   LayoutDashboard,
-  Zap,
-  Users,
-  BarChart3,
+  CalendarClock,
+  History,
   Settings,
   BatteryCharging,
 } from 'lucide-react'
@@ -11,9 +10,8 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/chargers', label: 'Charging Points', icon: Zap },
-  { to: '/users', label: 'Users', icon: Users },
-  { to: '/analytics', label: 'Energy Management', icon: BarChart3 },
+  { to: '/schedule', label: 'Schedule', icon: CalendarClock },
+  { to: '/history', label: 'History', icon: History },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

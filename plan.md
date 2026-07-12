@@ -8,7 +8,7 @@ Strip the project down to one focused job:
 
 Concretely:
 
-- Accept a connection from **one OCPP 1.6J charger** (more allowed by schema, UI assumes one). OCPP is **read-only telemetry** — we never send it control commands.
+- Accept a connection from **one OCPP 1.6J charger** (more allowed by schema, UI assumes one). OCPP is **mostly telemetry** — the only control commands are unlock/availability/config push and a charge-power cap via SetChargingProfile (see locked decisions).
 - Control the **car** via Home Assistant: a start button/service and a stop button/service, plus a battery-% sensor.
 - Pull **hourly prices** from `https://epexprijzen.nl/api/v1/prices/nextenergy/hourly` (supplier slug configurable in the UI), cache them, and graph them.
 - Let the user configure **car settings** (battery capacity, target %, HA entity/service IDs) and **charger settings** (max charge kW, charge point ID).
@@ -20,7 +20,8 @@ Concretely:
 | Topic | Decision |
 |---|---|
 | Charging start/stop | **Home Assistant service calls only.** No OCPP RemoteStart/Stop. |
-| Charger max kW | **Config value, used for scheduling math only.** No OCPP SetChargingProfile / current limiting. |
+| Charger max kW | **Config value, used for scheduling math only.** |
+| Charge-power cap | **UPDATED 2026-07-12:** the earlier "no OCPP SetChargingProfile / current limiting" lock was reversed on user request. A dashboard slider (in kW) sets a flat cap via `SetChargingProfile` (`TxDefaultProfile`/`Relative`); the backend converts kW→amps (`A = W / (phases × voltage)`) and sends the profile in **amps**, since most OCPP 1.6 chargers cap current. Bounds + voltage + phase count are configurable in charger settings. Start/stop still stays in HA. |
 | OCPP role | **Mostly telemetry** (connection, status, meter values → kWh + cost), **plus a few kept control commands**: unlock connector, set connector available/inoperative, and an **on-connect config push** (meter-value intervals, sampled measurands, heartbeat interval). |
 | Auto-accept | **All inbound transactions auto-accepted** — `BootNotification`, `Authorize`, `StartTransaction`, `StopTransaction` always return `Accepted` (already coded; keep it). No id-tag whitelist. |
 | HA auth | **Keep existing OAuth2** (indieauth flow, refresh-token rotation, token-refresh background service). |
@@ -398,13 +399,13 @@ New `src/api/*` modules + `src/types/*` to match the API above. Drop the charger
 |---|---|---|
 | **0. Branch** | Already on `feature/project-architecture-rewrite`. Commit this plan. | plan.md committed |
 | **1. Demolition** ✅ | Delete `Application` project; strip unused OCPP commands/messages (keep config-push + unlock + availability + correlation infra); delete HA publish gateway; rewrite `ChargePointSession` + `ChargerStatusTracker` onto `IChargerTelemetrySink`; gut `Domain`→`Core`; fix `Program.cs` DI + `.slnx`. | **DONE 2026-06-05.** Solution builds (0 errors), boots, DI resolves, fresh `InitialSchema` migration applies cleanly. No CQRS. See `plan-report.md`. |
-| **2. Data** | New EF entities + single fresh migration; settings seeding. | DB creates clean; settings CRUD round-trips. |
-| **3. HA control** | `IHomeAssistantControl` (read SoC, call services, list entities) + `/api/ha/entities`, `/api/settings/*`. | Can read SoC and fire a test service call from the API. |
-| **4. Prices** | `PriceFetchService` (browser UA, today+tomorrow), `HourlyPrice` cache, `/api/prices`. | Prices populate + graph data returns. |
-| **5. Scheduling** | `Core` ScheduleCalculator + unit tests; `/api/plan` + `/api/plan/preview`. | Preview returns correct cheapest-hour selection + cost. |
-| **6. Orchestrator** | `ChargeOrchestratorService` control loop (idempotent HA start/stop) + manual override endpoints. | Toggles HA start/stop on hour boundaries against a live/simulated car. |
-| **7. Cost** | Telemetry sink → cost attributor → `ChargeSession`/`HourlyEnergyUsage`; `/api/sessions`. | A completed session shows kWh + € cost bucketed by hour. |
-| **8. Frontend** | Rewrite Dashboard, Schedule, Settings, History; price graph with highlighted hours. | Full flow usable in the UI. |
+| **2. Data** ✅ | New EF entities + single fresh migration; settings seeding. | **DONE 2026-07-12.** Additive `ChargingDomain` migration (7 tables + 3 seeded settings rows), settings CRUD round-trips, config push wired to `ChargerSettings`. See `plan-report.md`. |
+| **3. HA control** ✅ | `IHomeAssistantControl` (read SoC, call services, list entities) + `/api/ha/entities`, `/api/settings/*`. | **DONE 2026-07-12.** See `plan-report.md`. |
+| **4. Prices** ✅ | `PriceFetchService` (browser UA, today+tomorrow), `HourlyPrice` cache, `/api/prices`. | **DONE 2026-07-12.** Verified against live EPEX API. |
+| **5. Scheduling** ✅ | `Core` ScheduleCalculator + unit tests; `/api/plan` + `/api/plan/preview`. | **DONE 2026-07-12.** 13 unit tests; full plan lifecycle verified live. |
+| **6. Orchestrator** ✅ | `ChargeOrchestratorService` control loop (idempotent HA start/stop) + manual override endpoints. | **DONE 2026-07-12.** Loop verified idle/no-HA; live-car E2E deferred to phase 9. |
+| **7. Cost** ✅ | Telemetry sink → cost attributor → `ChargeSession`/`HourlyEnergyUsage`; `/api/sessions`. | **DONE 2026-07-12.** 8 attributor tests; OCPP default-unit (Wh) fix included. |
+| **8. Frontend** ✅ | Rewrite Dashboard, Schedule, Settings, History; price graph with highlighted hours. | **DONE 2026-07-12.** Builds clean, proxy-verified against live backend; manual UI pass still recommended. See `plan-report.md`. |
 | **9. E2E + polish** | OCPP simulator + HA against the loop; deadline/feasibility edge cases; README + `OCPP_README` update. | End-to-end: set deadline → cheapest-hour charge → full by deadline → cost shown. |
 
 ---
@@ -421,4 +422,4 @@ New `src/api/*` modules + `src/types/*` to match the API above. Drop the charger
 
 ## 12. Out of scope (v1)
 
-OCPP charge-current limiting / smart-charging profiles; multi-car / multi-charger UX; solar/PV surplus; dynamic re-pricing mid-hour; user accounts/multi-tenant; mobile app.
+Multi-car / multi-charger UX; solar/PV surplus; dynamic re-pricing mid-hour; user accounts/multi-tenant; mobile app. (OCPP smart-charging power capping was moved *into* scope on 2026-07-12 — see §1 locked decisions.)

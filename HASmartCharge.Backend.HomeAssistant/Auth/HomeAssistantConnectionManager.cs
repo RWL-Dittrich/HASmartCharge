@@ -57,14 +57,46 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
                     connection.TokenType, connection.AccessToken);
 
                 var response = await httpClient.SendAsync(request);
-                if (!response.IsSuccessStatusCode)
+                if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
                 {
-                    _logger.LogWarning("Failed to verify Home Assistant connection during initialization. Status: {StatusCode}. Clearing stored connection.", response.StatusCode);
-                    await ClearConnectionAsync();
-                    lock (_lock)
+                    // A rejected access token at startup is expected whenever the backend
+                    // was offline past the ~30 min token lifetime — the access token is
+                    // short-lived, the refresh token is not. Try a refresh before giving
+                    // up; only a definitively rejected refresh (invalid_grant) clears the
+                    // stored connection (RefreshAccessTokenAsync does that itself).
+                    _logger.LogInformation(
+                        "Stored Home Assistant access token was rejected at startup ({StatusCode}); attempting a refresh.",
+                        response.StatusCode);
+                    try
                     {
-                        _connection = null;
+                        await RefreshAccessTokenAsync();
+                        _logger.LogInformation("Refreshed the Home Assistant access token at startup.");
                     }
+                    catch (Exception refreshEx)
+                    {
+                        bool wiped;
+                        lock (_lock)
+                        {
+                            wiped = _connection == null;
+                        }
+
+                        if (wiped)
+                        {
+                            _logger.LogWarning(refreshEx,
+                                "Home Assistant refresh token was rejected at startup; cleared stored connection.");
+                        }
+                        else
+                        {
+                            _logger.LogWarning(refreshEx,
+                                "Could not refresh the Home Assistant token at startup (transient failure); keeping stored connection for the refresh service to retry.");
+                        }
+                    }
+                }
+                else if (!response.IsSuccessStatusCode)
+                {
+                    // HA might be restarting/unreachable — keep the tokens and let the
+                    // token-refresh service retry.
+                    _logger.LogWarning("Could not verify Home Assistant connection during initialization (status {StatusCode}); keeping stored connection.", response.StatusCode);
                 }
                 else
                 {
@@ -141,6 +173,7 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
 
             if (existing != null)
             {
+                existing.ClientId = connection.ClientId;
                 existing.AccessToken = connection.AccessToken;
                 existing.RefreshToken = connection.RefreshToken;
                 existing.TokenType = connection.TokenType;
@@ -224,10 +257,18 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
             var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent)
                 ?? throw new Exception("Failed to deserialize token response");
 
+            // The authorization_code grant must return a refresh token; without one we
+            // could never refresh, so treat its absence as a hard failure.
+            if (string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+            {
+                throw new Exception("Token exchange response did not contain a refresh token");
+            }
+
             var now = DateTime.UtcNow;
             var connection = new HomeAssistantConnection
             {
                 BaseUrl = baseUrl,
+                ClientId = clientId,
                 AccessToken = tokenResponse.AccessToken,
                 RefreshToken = tokenResponse.RefreshToken,
                 TokenType = tokenResponse.TokenType,
@@ -331,11 +372,15 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
         var httpClient = _httpClientFactory.CreateClient();
         var tokenUrl = $"{connection.BaseUrl}/auth/token";
 
+        // HA requires the client_id used during authorization (this app's URL).
+        // Older rows predate the ClientId column; BaseUrl is a last-resort fallback.
+        var clientId = string.IsNullOrWhiteSpace(connection.ClientId) ? connection.BaseUrl : connection.ClientId;
+
         var requestBody = new Dictionary<string, string>
         {
             { "grant_type", "refresh_token" },
             { "refresh_token", connection.RefreshToken },
-            { "client_id", connection.BaseUrl } // Client ID should be the base URL
+            { "client_id", clientId }
         };
 
         var content = new FormUrlEncodedContent(requestBody);
@@ -350,8 +395,15 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
                 _logger.LogError("Token refresh failed with status {StatusCode}: {Error}",
                     response.StatusCode, errorContent);
 
-                // If refresh fails, disconnect
-                await DisconnectAsync();
+                // Only wipe the stored connection when HA definitively revoked the grant.
+                // Transient failures (network, HA restarting, 5xx) keep the tokens so the
+                // next refresh cycle can retry.
+                if (errorContent.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Refresh token rejected as invalid_grant; clearing stored connection.");
+                    await DisconnectAsync();
+                }
+
                 throw new Exception($"Failed to refresh token: {response.StatusCode}");
             }
 
@@ -366,7 +418,13 @@ public class HomeAssistantConnectionManager : IHomeAssistantConnectionManager
                 if (_connection != null)
                 {
                     _connection.AccessToken = tokenResponse.AccessToken;
-                    _connection.RefreshToken = tokenResponse.RefreshToken;
+                    // HA's refresh_token grant does NOT return a refresh token — it keeps
+                    // the same one. Only overwrite if HA ever starts returning a new one;
+                    // otherwise preserve the stored token so future refreshes keep working.
+                    if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+                    {
+                        _connection.RefreshToken = tokenResponse.RefreshToken;
+                    }
                     _connection.TokenType = tokenResponse.TokenType;
                     _connection.ExpiresIn = tokenResponse.ExpiresIn;
                     _connection.ExpiresAt = now.AddSeconds(tokenResponse.ExpiresIn);

@@ -63,11 +63,13 @@ public class ChargingSchedulePeriod
 {
     [JsonPropertyName("startPeriod")]
     public int StartPeriod { get; set; }
-    
+
     [JsonPropertyName("limit")]
     public decimal Limit { get; set; }
-    
+
+    // Optional OCPP fields are omitted (not sent as null) so strict chargers accept the profile.
     [JsonPropertyName("numberPhases")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? NumberPhases { get; set; }
 }
 
@@ -77,18 +79,21 @@ public class ChargingSchedulePeriod
 public class ChargingSchedule
 {
     [JsonPropertyName("duration")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Duration { get; set; }
-    
+
     [JsonPropertyName("startSchedule")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTime? StartSchedule { get; set; }
-    
+
     [JsonPropertyName("chargingRateUnit")]
     public string ChargingRateUnit { get; set; } = string.Empty; // W, A
-    
+
     [JsonPropertyName("chargingSchedulePeriod")]
     public List<ChargingSchedulePeriod> ChargingSchedulePeriod { get; set; } = new();
-    
+
     [JsonPropertyName("minChargingRate")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? MinChargingRate { get; set; }
 }
 
@@ -99,28 +104,32 @@ public class ChargingProfile
 {
     [JsonPropertyName("chargingProfileId")]
     public int ChargingProfileId { get; set; }
-    
+
     [JsonPropertyName("transactionId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? TransactionId { get; set; }
-    
+
     [JsonPropertyName("stackLevel")]
     public int StackLevel { get; set; }
-    
+
     [JsonPropertyName("chargingProfilePurpose")]
     public string ChargingProfilePurpose { get; set; } = string.Empty; // ChargePointMaxProfile, TxDefaultProfile, TxProfile
-    
+
     [JsonPropertyName("chargingProfileKind")]
     public string ChargingProfileKind { get; set; } = string.Empty; // Absolute, Recurring, Relative
-    
+
     [JsonPropertyName("recurrencyKind")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RecurrencyKind { get; set; } // Daily, Weekly
-    
+
     [JsonPropertyName("validFrom")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTime? ValidFrom { get; set; }
-    
+
     [JsonPropertyName("validTo")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTime? ValidTo { get; set; }
-    
+
     [JsonPropertyName("chargingSchedule")]
     public ChargingSchedule ChargingSchedule { get; set; } = new();
 }

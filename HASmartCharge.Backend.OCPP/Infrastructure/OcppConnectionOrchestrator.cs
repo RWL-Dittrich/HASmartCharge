@@ -20,6 +20,7 @@ public class OcppConnectionOrchestrator
     private readonly IOcppMessageRouter _messageRouter;
     private readonly ChargerConfigurationService _configurationService;
     private readonly IChargerTelemetrySink _telemetry;
+    private readonly IOcppChargerConfigurationProvider _configProvider;
 
     public OcppConnectionOrchestrator(
         ILogger<OcppConnectionOrchestrator> logger,
@@ -28,7 +29,8 @@ public class OcppConnectionOrchestrator
         ISessionManager sessionManager,
         IOcppMessageRouter messageRouter,
         ChargerConfigurationService configurationService,
-        IChargerTelemetrySink telemetry)
+        IChargerTelemetrySink telemetry,
+        IOcppChargerConfigurationProvider configProvider)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
@@ -37,6 +39,7 @@ public class OcppConnectionOrchestrator
         _messageRouter = messageRouter ?? throw new ArgumentNullException(nameof(messageRouter));
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
         _telemetry = telemetry ?? throw new ArgumentNullException(nameof(telemetry));
+        _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
     }
 
     /// <summary>
@@ -68,7 +71,8 @@ public class OcppConnectionOrchestrator
             connection,
             _loggerFactory.CreateLogger<ChargePointSession>(),
             _configurationService,
-            _telemetry);
+            _telemetry,
+            _configProvider);
 
         // Register session
         _sessionManager.RegisterSession(session);
@@ -79,7 +83,7 @@ public class OcppConnectionOrchestrator
             await session.InitializeAsync(cancellationToken);
 
             // Process messages
-            await ProcessMessagesAsync(connection, cancellationToken);
+            await ProcessMessagesAsync(connection, chargePointId, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -97,6 +101,7 @@ public class OcppConnectionOrchestrator
 
     private async Task ProcessMessagesAsync(
         WebSocketConnection connection,
+        string chargePointId,
         CancellationToken cancellationToken)
     {
         while (connection.IsOpen && !cancellationToken.IsCancellationRequested)
@@ -110,12 +115,15 @@ public class OcppConnectionOrchestrator
                 break;
             }
 
+            OcppRawLog.Append(chargePointId, "in", rawMessage);
+
             // Route message and get response
             var response = await _messageRouter.RouteAsync(connection, rawMessage, cancellationToken);
 
             // Send response if needed
             if (!string.IsNullOrEmpty(response))
             {
+                OcppRawLog.Append(chargePointId, "out", response);
                 await connection.SendAsync(response, cancellationToken);
             }
         }
