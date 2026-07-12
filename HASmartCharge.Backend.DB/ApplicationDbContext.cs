@@ -18,6 +18,8 @@ public class ApplicationDbContext : DbContext
     public DbSet<ChargePlan> ChargePlans { get; set; }
     public DbSet<ChargeSession> ChargeSessions { get; set; }
     public DbSet<HourlyEnergyUsage> HourlyEnergyUsage { get; set; }
+    public DbSet<AutoScheduleSettings> AutoScheduleSettings { get; set; }
+    public DbSet<ScheduleOverride> ScheduleOverrides { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,9 +43,15 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // One override per local date.
+        modelBuilder.Entity<ScheduleOverride>()
+            .HasIndex(o => o.DateLocal)
+            .IsUnique();
+
         // Settings tables are single-row, seeded with Id = 1.
         modelBuilder.Entity<PriceProviderSettings>().HasData(new PriceProviderSettings { Id = 1 });
         modelBuilder.Entity<CarSettings>().HasData(new CarSettings { Id = 1 });
         modelBuilder.Entity<ChargerSettings>().HasData(new ChargerSettings { Id = 1 });
+        modelBuilder.Entity<AutoScheduleSettings>().HasData(new AutoScheduleSettings { Id = 1 });
     }
 }

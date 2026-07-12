@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, CalendarClock, Loader2, Trash2 } from 'lucide-react'
 import { TopBar } from '@/components/layout/TopBar'
 import { PriceChart } from '@/components/charts/PriceChart'
+import { AutoScheduleCard } from '@/components/schedule/AutoScheduleCard'
+import { OverridesCard } from '@/components/schedule/OverridesCard'
 import { Badge } from '@/components/ui/Badge'
 import { useCancelPlan, useCreatePlan, useCurrentPlan, usePlanPreview } from '@/hooks/usePlan'
 import { usePrices } from '@/hooks/usePrices'
@@ -105,8 +107,12 @@ export function SchedulePage() {
           </div>
         )}
 
+        <AutoScheduleCard />
+
+        <OverridesCard />
+
         <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 space-y-4">
-          <h2 className="text-sm font-semibold text-white">New Plan</h2>
+          <h2 className="text-sm font-semibold text-white">Manual plan (one-off)</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="text-sm">
               <span className="text-[#8892a4] block mb-1">Deadline</span>
