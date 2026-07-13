@@ -21,7 +21,13 @@ export function useUnlockCharger() {
 }
 
 export function useSetChargerAvailability() {
-  return useMutation({ mutationFn: (available: boolean) => setChargerAvailability(available) })
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (available: boolean) => setChargerAvailability(available),
+    // Reload charger status so the UI reflects the new availability immediately
+    // instead of waiting for the next 10s poll.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: chargerKeys.status }),
+  })
 }
 
 export function useReconfigureCharger() {
