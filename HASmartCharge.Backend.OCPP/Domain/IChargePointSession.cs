@@ -66,7 +66,9 @@ public interface IChargePointSession
     Task InitializeAsync(CancellationToken cancellationToken = default);
     
     /// <summary>
-    /// Cleanup the session
+    /// Cleanup the session. Pass <paramref name="notifyDisconnected"/> = false when a
+    /// newer session has already superseded this one (reconnect) so a stale teardown
+    /// doesn't flip live status to disconnected.
     /// </summary>
-    Task DisposeAsync();
+    Task DisposeAsync(bool notifyDisconnected = true);
 }

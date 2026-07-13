@@ -1,0 +1,53 @@
+name: Tag on version change
+
+# When a push to main changes addon/config.yaml, read its `version` and create the
+# matching `v<version>` tag if it doesn't already exist. That tag push is what triggers
+# the "Build add-on image" workflow (on: push: tags: v*).
+#
+# IMPORTANT: a tag pushed with the default GITHUB_TOKEN does NOT trigger other workflows.
+# To make the image build auto-run, add a repo secret TAG_PAT (a PAT / fine-grained token
+# with contents:write) — the step below uses it when present. Without TAG_PAT the tag is
+# still created, but you must run "Build add-on image" manually (workflow_dispatch).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "addon/config.yaml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.TAG_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Read version from config.yaml
+        id: v
+        run: |
+          version="$(yq '.version' addon/config.yaml)"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "::error::Could not read a version from addon/config.yaml"
+            exit 1
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Version in config.yaml: $version"
+
+      - name: Create and push tag if it doesn't exist
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — version unchanged, nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "Created and pushed $TAG"

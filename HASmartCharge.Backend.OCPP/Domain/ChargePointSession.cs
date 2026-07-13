@@ -350,11 +350,12 @@ public class ChargePointSession : IChargePointSession
 
     #endregion
 
-    public async Task DisposeAsync()
+    public async Task DisposeAsync(bool notifyDisconnected = true)
     {
         _logger.LogInformation("[{ChargePointId}] Disposing session", ChargePointId);
         IsActive = false;
-        _telemetry.OnDisconnected(ChargePointId);
+        if (notifyDisconnected)
+            _telemetry.OnDisconnected(ChargePointId);
 
         try
         {

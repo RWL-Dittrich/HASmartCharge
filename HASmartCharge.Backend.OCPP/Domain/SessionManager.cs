@@ -32,17 +32,28 @@ public class SessionManager : ISessionManager
             session.Connection.ConnectionId);
     }
 
-    public void UnregisterSession(string chargePointId)
+    public bool UnregisterSession(IChargePointSession session)
     {
-        if (_sessionsByChargePointId.TryRemove(chargePointId, out var session))
-        {
-            _sessionsByConnectionId.TryRemove(session.Connection.ConnectionId, out _);
+        if (session == null)
+            throw new ArgumentNullException(nameof(session));
 
-            _logger.LogInformation(
-                "[{ChargePointId}] Session unregistered (ConnectionId: {ConnectionId})",
-                session.ChargePointId,
-                session.Connection.ConnectionId);
-        }
+        // Always drop this session's own connection mapping.
+        _sessionsByConnectionId.TryRemove(session.Connection.ConnectionId, out _);
+
+        // Only drop the charge-point mapping if it STILL points to this exact session.
+        // On a reconnect a newer session may already own the chargePointId key; a stale
+        // session's teardown must not clobber it. TryRemove(KeyValuePair) is atomic on
+        // both key and value (reference equality for the session).
+        var wasCurrent = _sessionsByChargePointId.TryRemove(
+            new KeyValuePair<string, IChargePointSession>(session.ChargePointId, session));
+
+        _logger.LogInformation(
+            "[{ChargePointId}] Session unregistered (ConnectionId: {ConnectionId}, WasCurrent: {WasCurrent})",
+            session.ChargePointId,
+            session.Connection.ConnectionId,
+            wasCurrent);
+
+        return wasCurrent;
     }
 
     public IChargePointSession? GetByChargePointId(string chargePointId)

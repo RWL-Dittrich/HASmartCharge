@@ -11,9 +11,13 @@ public interface ISessionManager
     void RegisterSession(IChargePointSession session);
     
     /// <summary>
-    /// Unregister a session
+    /// Unregister a session. Removes the session's connection mapping and,
+    /// only if the charge-point key still points to this exact session, its
+    /// charge-point mapping too. Returns true when this session was still the
+    /// current registration for its charge point (i.e. not already superseded
+    /// by a reconnect).
     /// </summary>
-    void UnregisterSession(string chargePointId);
+    bool UnregisterSession(IChargePointSession session);
     
     /// <summary>
     /// Get a session by charge point ID

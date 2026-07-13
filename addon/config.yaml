@@ -1,5 +1,5 @@
 name: HASmartCharge
-version: "0.1.3"
+version: "0.1.4"
 slug: hasmartcharge
 description: >-
   Charge one EV as cheaply as possible by a deadline using EPEX hourly prices,

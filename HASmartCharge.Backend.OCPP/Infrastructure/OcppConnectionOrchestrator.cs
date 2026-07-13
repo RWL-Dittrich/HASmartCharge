@@ -91,9 +91,11 @@ public class OcppConnectionOrchestrator
         }
         finally
         {
-            // Cleanup
-            _sessionManager.UnregisterSession(chargePointId);
-            await session.DisposeAsync();
+            // Cleanup. Only notify disconnected if this session is still the current
+            // registration — a reconnect may have already replaced it, in which case
+            // this stale teardown must not clobber the live session nor flip its status.
+            var wasCurrent = _sessionManager.UnregisterSession(session);
+            await session.DisposeAsync(notifyDisconnected: wasCurrent);
 
             _logger.LogInformation("[{ChargePointId}] Connection closed", chargePointId);
         }
