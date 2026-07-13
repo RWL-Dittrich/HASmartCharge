@@ -59,8 +59,6 @@ public class ChargePointSession : IChargePointSession
 
         _telemetry.OnConnected(ChargePointId);
 
-        // Trigger BootNotification + push configuration in the background so it runs
-        // in parallel with message processing. The orchestrator keeps the session alive.
         _ = InitializeInBackgroundAsync(cancellationToken);
         return Task.CompletedTask;
     }
@@ -70,9 +68,6 @@ public class ChargePointSession : IChargePointSession
         try
         {
             await Task.Delay(2000, cancellationToken); // let the connection settle
-            await TriggerBootNotificationAsync(cancellationToken);
-
-            await Task.Delay(2000, cancellationToken);
             await _configurationService.ConfigureChargerAsync(ChargePointId, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -240,7 +235,7 @@ public class ChargePointSession : IChargePointSession
 
         if (request != null)
         {
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "[{ChargePointId}] MeterValues: Connector={Connector}, TransactionId={TransactionId}, Values={ValueCount}",
                 ChargePointId, request.ConnectorId, request.TransactionId, request.MeterValue?.Count ?? 0);
 
