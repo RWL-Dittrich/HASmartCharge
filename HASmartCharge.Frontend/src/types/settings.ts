@@ -24,6 +24,19 @@ export interface CarSettings {
   haTargetSocEntityId: string | null
 }
 
+export interface MqttSettings {
+  id: number
+  enabled: boolean
+  host: string
+  port: number
+  username: string | null
+  password: string | null
+  useTls: boolean
+  clientId: string
+  baseTopic: string
+  discoveryPrefix: string
+}
+
 export interface ChargerSettings {
   id: number
   chargePointId: string

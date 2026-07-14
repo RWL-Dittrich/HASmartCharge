@@ -20,6 +20,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<HourlyEnergyUsage> HourlyEnergyUsage { get; set; }
     public DbSet<AutoScheduleSettings> AutoScheduleSettings { get; set; }
     public DbSet<ScheduleOverride> ScheduleOverrides { get; set; }
+    public DbSet<MqttSettings> MqttSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,5 +54,6 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<CarSettings>().HasData(new CarSettings { Id = 1 });
         modelBuilder.Entity<ChargerSettings>().HasData(new ChargerSettings { Id = 1 });
         modelBuilder.Entity<AutoScheduleSettings>().HasData(new AutoScheduleSettings { Id = 1 });
+        modelBuilder.Entity<MqttSettings>().HasData(new MqttSettings { Id = 1 });
     }
 }
