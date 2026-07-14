@@ -30,4 +30,10 @@ public interface IConnection
     /// Close the connection
     /// </summary>
     Task CloseAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hard-abort the connection without a close handshake.
+    /// Use on links presumed dead, where CloseAsync would block waiting for the peer.
+    /// </summary>
+    void Abort();
 }

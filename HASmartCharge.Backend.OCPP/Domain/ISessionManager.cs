@@ -6,9 +6,11 @@ namespace HASmartCharge.Backend.OCPP.Domain;
 public interface ISessionManager
 {
     /// <summary>
-    /// Register a new session
+    /// Register a new session. Returns the previous session for the same charge
+    /// point when one was still registered (a reconnect displaced it), else null.
+    /// The caller should abort the displaced session's connection.
     /// </summary>
-    void RegisterSession(IChargePointSession session);
+    IChargePointSession? RegisterSession(IChargePointSession session);
     
     /// <summary>
     /// Unregister a session. Removes the session's connection mapping and,

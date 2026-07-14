@@ -74,8 +74,25 @@ public class OcppConnectionOrchestrator
             _telemetry,
             _configProvider);
 
-        // Register session
-        _sessionManager.RegisterSession(session);
+        // Register session. A displaced previous session means the charger reconnected
+        // while its old socket still looked open — abort that socket so its receive loop
+        // unwinds now instead of waiting minutes for a TCP reset (zombie connection).
+        var displaced = _sessionManager.RegisterSession(session);
+        if (displaced != null)
+        {
+            _logger.LogWarning(
+                "[{ChargePointId}] Reconnect while previous connection {ConnectionId} still registered — aborting stale connection",
+                chargePointId,
+                displaced.Connection.ConnectionId);
+            try
+            {
+                displaced.Connection.Abort();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[{ChargePointId}] Stale connection abort failed (already torn down)", chargePointId);
+            }
+        }
 
         try
         {

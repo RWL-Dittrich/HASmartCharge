@@ -32,7 +32,16 @@ public class OcppController : ControllerBase
         {
             _logger.LogInformation("Charge point connection request: {ChargePointId}", chargePointId);
 
-            using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync("ocpp1.6");
+            // OCPP has no CS->CP heartbeat message; the OCPP-J spec delegates connection
+            // supervision to WebSocket ping/pong. Ping every 30s and abort the socket when
+            // no pong arrives within 30s — without the timeout a dead link is only noticed
+            // when a TCP reset happens to arrive, leaving a zombie session until then.
+            using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
+            {
+                SubProtocol = "ocpp1.6",
+                KeepAliveInterval = TimeSpan.FromSeconds(30),
+                KeepAliveTimeout = TimeSpan.FromSeconds(30),
+            });
             
             var remoteEndPoint = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             

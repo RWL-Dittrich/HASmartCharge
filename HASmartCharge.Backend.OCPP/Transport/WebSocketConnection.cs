@@ -52,6 +52,8 @@ public class WebSocketConnection : IConnection
         }
     }
 
+    public void Abort() => _webSocket.Abort();
+
     /// <summary>
     /// Receive the next message from the WebSocket
     /// Returns null if connection is closed

@@ -18,18 +18,30 @@ public class SessionManager : ISessionManager
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public void RegisterSession(IChargePointSession session)
+    public IChargePointSession? RegisterSession(IChargePointSession session)
     {
         if (session == null)
             throw new ArgumentNullException(nameof(session));
 
-        _sessionsByChargePointId[session.ChargePointId] = session;
+        // Capture the session this registration displaces (charger reconnected while
+        // the old socket still looked open) so the caller can abort it promptly.
+        IChargePointSession? displaced = null;
+        _sessionsByChargePointId.AddOrUpdate(
+            session.ChargePointId,
+            session,
+            (_, existing) =>
+            {
+                displaced = ReferenceEquals(existing, session) ? null : existing;
+                return session;
+            });
         _sessionsByConnectionId[session.Connection.ConnectionId] = session;
 
         _logger.LogInformation(
             "[{ChargePointId}] Session registered (ConnectionId: {ConnectionId})",
             session.ChargePointId,
             session.Connection.ConnectionId);
+
+        return displaced;
     }
 
     public bool UnregisterSession(IChargePointSession session)
