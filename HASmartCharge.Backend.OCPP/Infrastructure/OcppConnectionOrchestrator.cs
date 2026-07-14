@@ -99,8 +99,9 @@ public class OcppConnectionOrchestrator
             // Initialize session (triggers BootNotification, configuration, etc.)
             await session.InitializeAsync(cancellationToken);
 
-            // Process messages
-            await ProcessMessagesAsync(connection, chargePointId, cancellationToken);
+            // Process messages, aborting the link if OCPP traffic stops for the idle window.
+            var idleTimeout = await ResolveIdleTimeoutAsync(chargePointId, cancellationToken);
+            await ProcessMessagesAsync(connection, chargePointId, idleTimeout, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -118,15 +119,57 @@ public class OcppConnectionOrchestrator
         }
     }
 
+    // A charger emits an OCPP Heartbeat at least every HeartbeatInterval (plus MeterValues
+    // during a transaction), so a healthy link is never silent for long. Allow 3 missed
+    // heartbeats before declaring the link dead, with a floor so a tiny configured interval
+    // can't cause false aborts on normal jitter.
+    private async Task<TimeSpan> ResolveIdleTimeoutAsync(string chargePointId, CancellationToken cancellationToken)
+    {
+        var heartbeatSeconds = OcppChargerConfiguration.Default.HeartbeatIntervalSeconds;
+        try
+        {
+            var config = await _configProvider.GetConfigurationAsync(chargePointId, cancellationToken);
+            heartbeatSeconds = config.HeartbeatIntervalSeconds;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "[{ChargePointId}] Could not resolve heartbeat interval for idle timeout; using default",
+                chargePointId);
+        }
+
+        return TimeSpan.FromSeconds(Math.Max(heartbeatSeconds * 3, 90));
+    }
+
     private async Task ProcessMessagesAsync(
         WebSocketConnection connection,
         string chargePointId,
+        TimeSpan idleTimeout,
         CancellationToken cancellationToken)
     {
         while (connection.IsOpen && !cancellationToken.IsCancellationRequested)
         {
-            // Receive message
-            var rawMessage = await connection.ReceiveAsync(cancellationToken);
+            // Receive message. Bound the wait by the idle timeout: an OCPP-level silence
+            // (no Heartbeat, no MeterValues) means the link is dead even though the TCP
+            // socket may still look open, so abort it rather than block here forever.
+            string? rawMessage;
+            using (var idleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                idleCts.CancelAfter(idleTimeout);
+                try
+                {
+                    rawMessage = await connection.ReceiveAsync(idleCts.Token);
+                }
+                catch (OperationCanceledException) when (idleCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning(
+                        "[{ChargePointId}] No OCPP traffic for {IdleSeconds}s — treating link as dead and aborting",
+                        chargePointId,
+                        (int)idleTimeout.TotalSeconds);
+                    connection.Abort();
+                    break;
+                }
+            }
 
             if (rawMessage == null)
             {

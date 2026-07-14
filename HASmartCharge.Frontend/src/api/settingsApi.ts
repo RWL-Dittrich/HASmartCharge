@@ -1,5 +1,5 @@
 import { apiFetch } from '@/api/client'
-import type { CarSettings, ChargerSettings, PriceProviderSettings } from '@/types/settings'
+import type { CarSettings, ChargerSettings, MqttSettings, PriceProviderSettings } from '@/types/settings'
 
 export function getPriceSettings(): Promise<PriceProviderSettings> {
   return apiFetch<PriceProviderSettings>('/api/settings/price')
@@ -29,6 +29,17 @@ export function getChargerSettings(): Promise<ChargerSettings> {
 
 export function updateChargerSettings(settings: ChargerSettings): Promise<ChargerSettings> {
   return apiFetch<ChargerSettings>('/api/settings/charger', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+}
+
+export function getMqttSettings(): Promise<MqttSettings> {
+  return apiFetch<MqttSettings>('/api/settings/mqtt')
+}
+
+export function updateMqttSettings(settings: MqttSettings): Promise<MqttSettings> {
+  return apiFetch<MqttSettings>('/api/settings/mqtt', {
     method: 'PUT',
     body: JSON.stringify(settings),
   })

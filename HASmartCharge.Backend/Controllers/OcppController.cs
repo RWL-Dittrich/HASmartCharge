@@ -28,28 +28,48 @@ public class OcppController : ControllerBase
     [Route("1.6/{chargePointId}")]
     public async Task HandleWebSocket([FromRoute] string chargePointId)
     {
+        // Log every hit to the endpoint before doing anything else — this is the earliest
+        // point we can trace a (re)connect attempt, including ones that fail the WebSocket
+        // handshake or aren't WS requests at all, so a charger stuck in a reconnect loop
+        // still leaves a footprint here.
+        var remoteEndPoint = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        _logger.LogInformation(
+            "[{ChargePointId}] Incoming connection from {RemoteEndPoint} (WebSocket handshake: {IsWebSocket}, subprotocols: [{SubProtocols}])",
+            chargePointId,
+            remoteEndPoint,
+            HttpContext.WebSockets.IsWebSocketRequest,
+            string.Join(", ", HttpContext.WebSockets.WebSocketRequestedProtocols));
+
         if (HttpContext.WebSockets.IsWebSocketRequest)
         {
-            _logger.LogInformation("Charge point connection request: {ChargePointId}", chargePointId);
-
-            // OCPP has no CS->CP heartbeat message; the OCPP-J spec delegates connection
-            // supervision to WebSocket ping/pong. Ping every 60s and abort the socket when
-            // no pong arrives within 60s — without the timeout a dead link is only noticed
-            // when a TCP reset happens to arrive, leaving a zombie session until then.
+            // Keep sending WebSocket keepalive frames every 60s so NATs/proxies don't drop
+            // the idle link. We deliberately do NOT set KeepAliveTimeout: that would put the
+            // socket into ping-and-expect-pong mode and force-abort the connection when no
+            // pong arrives — but many OCPP 1.6J chargers never answer WS-level ping frames
+            // (they keep the link alive with OCPP Heartbeat messages instead), so the timeout
+            // kills perfectly healthy chargers. Dead-link detection lives at the OCPP layer
+            // instead: OcppConnectionOrchestrator aborts a session that sends no OCPP traffic
+            // (Heartbeat is guaranteed every HeartbeatInterval) within its idle window.
             using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
             {
                 SubProtocol = "ocpp1.6",
                 KeepAliveInterval = TimeSpan.FromSeconds(60),
-                KeepAliveTimeout = TimeSpan.FromSeconds(60),
             });
-            
-            var remoteEndPoint = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            
+
+            _logger.LogInformation(
+                "[{ChargePointId}] WebSocket handshake accepted (subprotocol: {SubProtocol}) from {RemoteEndPoint}",
+                chargePointId,
+                webSocket.SubProtocol ?? "none",
+                remoteEndPoint);
+
             await _orchestrator.HandleConnectionAsync(webSocket, chargePointId, remoteEndPoint);
         }
         else
         {
-            _logger.LogWarning("Non-WebSocket request received for: {ChargePointId}", chargePointId);
+            _logger.LogWarning(
+                "[{ChargePointId}] Non-WebSocket request from {RemoteEndPoint} rejected",
+                chargePointId,
+                remoteEndPoint);
             HttpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
             await HttpContext.Response.WriteAsync("WebSocket connection required");
         }

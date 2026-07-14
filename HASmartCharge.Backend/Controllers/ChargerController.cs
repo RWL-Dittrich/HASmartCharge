@@ -1,5 +1,4 @@
 using HASmartCharge.Backend.DB;
-using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Services;
 using HASmartCharge.Backend.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -75,7 +74,7 @@ public class ChargerController : ControllerBase
             connected = status?.IsConnected ?? false,
             connectorId = charger.ConnectorId,
             connectorStatus = connector?.Status,
-            currentPowerKw = ToKw(measurands?.PowerActiveImport),
+            currentPowerKw = OcppValueHelpers.ToKw(measurands?.PowerActiveImport),
             sessionEnergyKwh,
             sessionCost,
             lastHeartbeatAt = status?.LastUpdated
@@ -140,7 +139,7 @@ public class ChargerController : ControllerBase
         }
 
         // SetChargingProfile.conf may still say Rejected/NotSupported even on a successful call.
-        var status = ReadStatus(result.RawPayload);
+        var status = OcppValueHelpers.ReadStatus(result.RawPayload);
         if (!string.Equals(status, "Accepted", StringComparison.OrdinalIgnoreCase))
         {
             return StatusCode(StatusCodes.Status422UnprocessableEntity,
@@ -164,37 +163,6 @@ public class ChargerController : ControllerBase
 
         await _chargerControl.ReconfigureAsync(charger.ChargePointId, ct);
         return Ok(new { chargePointId = charger.ChargePointId, reconfigured = true });
-    }
-
-    /// <summary>OCPP's default unit for Power.Active.Import is watts; convert to kW unless the charger already reports kW.</summary>
-    private static double? ToKw(MeasurandValue? value)
-    {
-        if (value?.AsDecimal() is not { } raw)
-        {
-            return null;
-        }
-
-        var kw = (double)raw;
-        if (!string.Equals(value.Unit, "kW", StringComparison.OrdinalIgnoreCase))
-        {
-            kw /= 1000;
-        }
-
-        return kw;
-    }
-
-    /// <summary>Reads the "status" string from an OCPP CALLRESULT payload, if present.</summary>
-    private static string? ReadStatus(System.Text.Json.JsonElement? payload)
-    {
-        if (payload is { } el
-            && el.ValueKind == System.Text.Json.JsonValueKind.Object
-            && el.TryGetProperty("status", out var statusEl)
-            && statusEl.ValueKind == System.Text.Json.JsonValueKind.String)
-        {
-            return statusEl.GetString();
-        }
-
-        return null;
     }
 
     public record SetAvailabilityRequest(bool Available);

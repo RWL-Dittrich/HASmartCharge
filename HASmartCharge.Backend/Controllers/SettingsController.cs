@@ -1,12 +1,13 @@
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Backend.Services.Mqtt;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace HASmartCharge.Backend.Controllers;
 
 /// <summary>
-/// CRUD for the three single-row settings tables (price provider, car, charger).
+/// CRUD for the four single-row settings tables (price provider, car, charger, MQTT).
 /// Rows are seeded with Id = 1; PUT updates that row and ignores any incoming Id.
 /// </summary>
 [ApiController]
@@ -14,10 +15,12 @@ namespace HASmartCharge.Backend.Controllers;
 public class SettingsController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly IMqttSettingsNotifier _mqttNotifier;
 
-    public SettingsController(ApplicationDbContext dbContext)
+    public SettingsController(ApplicationDbContext dbContext, IMqttSettingsNotifier mqttNotifier)
     {
         _dbContext = dbContext;
+        _mqttNotifier = mqttNotifier;
     }
 
     [HttpGet("price")]
@@ -102,6 +105,37 @@ public class SettingsController : ControllerBase
         settings.MeterValuesSampledData = update.MeterValuesSampledData;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(settings);
+    }
+
+    [HttpGet("mqtt")]
+    public async Task<ActionResult<MqttSettings>> GetMqttSettings(CancellationToken cancellationToken)
+    {
+        var settings = await _dbContext.MqttSettings.AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        return settings is null ? NotFound() : Ok(settings);
+    }
+
+    [HttpPut("mqtt")]
+    public async Task<ActionResult<MqttSettings>> UpdateMqttSettings(
+        MqttSettings update, CancellationToken cancellationToken)
+    {
+        var settings = await _dbContext.MqttSettings.FirstAsync(cancellationToken);
+
+        settings.Enabled = update.Enabled;
+        settings.Host = update.Host;
+        settings.Port = update.Port;
+        settings.Username = update.Username;
+        settings.Password = update.Password;
+        settings.UseTls = update.UseTls;
+        settings.ClientId = update.ClientId;
+        settings.BaseTopic = update.BaseTopic;
+        settings.DiscoveryPrefix = update.DiscoveryPrefix;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Wake the publisher so it reconnects/republishes immediately instead of at the next tick.
+        _mqttNotifier.NotifyChanged();
+
         return Ok(settings);
     }
 }

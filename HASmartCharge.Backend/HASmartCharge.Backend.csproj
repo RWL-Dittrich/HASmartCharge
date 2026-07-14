@@ -8,6 +8,11 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+        <!-- Pinned to the last 4.x with the ManagedMqttClient (auto-reconnect, auto-resubscribe,
+             outbound queue), shipped as a separate co-versioned extension package that v5 removed.
+             Keep ALL MQTTnet usage inside MqttConnection.cs so a future migration touches one file. -->
+        <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+        <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="4.3.7.1207" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.3">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
