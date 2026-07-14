@@ -42,6 +42,22 @@ The SQLite database lives in the add-on's `/data` volume, so schedules, settings
 session history **survive add-on updates and restarts**. Database migrations apply automatically on
 start.
 
+## Diagnostics: OCPP raw frame log
+
+For debugging charger connection issues, the add-on can write **every raw OCPP frame**
+(both directions, UTC-timestamped) to a file — independent of the normal log level, so it
+also captures MeterValues/Heartbeat traffic that the add-on log hides.
+
+Enable it under the add-on's **Configuration** tab:
+
+- `ocpp_raw_frame_log` — turn the frame log on/off (default: off).
+- `ocpp_raw_frame_log_path` — where to write it (default: `/data/ocpp-raw.log`, which
+  survives restarts).
+
+Restart the add-on after changing these. The startup log confirms with
+`OCPP raw frame log enabled: <path>`. The file grows unbounded (MeterValues every few
+seconds add up) — turn it off and delete the file when you're done debugging.
+
 ## Notes
 
 - All times are handled in UTC internally; departure times are entered in local wall-clock and

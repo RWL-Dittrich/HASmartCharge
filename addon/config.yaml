@@ -1,5 +1,5 @@
 name: HASmartCharge
-version: "0.1.8"
+version: "0.1.9"
 slug: hasmartcharge
 description: >-
   Charge one EV as cheaply as possible by a deadline using EPEX hourly prices,
@@ -24,3 +24,10 @@ ports:
   "8180/tcp": 8180
 ports_description:
   "8180/tcp": "OCPP 1.6J WebSocket — point the charger at ws://<HA-IP>:8180/ocpp/1.6/<chargePointId>"
+# Options land in /data/options.json, which the backend loads into IConfiguration.
+options:
+  ocpp_raw_frame_log: false
+  ocpp_raw_frame_log_path: /data/ocpp-raw.log
+schema:
+  ocpp_raw_frame_log: bool
+  ocpp_raw_frame_log_path: str

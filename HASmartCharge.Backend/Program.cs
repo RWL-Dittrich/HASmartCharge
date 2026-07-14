@@ -40,10 +40,14 @@ builder.Services.AddHostedService<TokenRefreshService>();
 builder.Services.AddScoped<IHomeAssistantApiService, HomeAssistantApiService>();
 builder.Services.AddScoped<IHomeAssistantControl, HomeAssistantControl>();
 
-// OCPP: temporary raw-frame diagnostic log (Ocpp:RawFrameLog section).
+// OCPP: raw-frame diagnostic log. The add-on options (ocpp_raw_frame_log /
+// ocpp_raw_frame_log_path, from /data/options.json) take precedence over the
+// Ocpp:RawFrameLog appsettings section used in standalone/dev runs.
 OcppRawLog.Configure(
-    builder.Configuration.GetValue("Ocpp:RawFrameLog:Enabled", false),
-    builder.Configuration["Ocpp:RawFrameLog:Path"]);
+    builder.Configuration.GetValue<bool?>("ocpp_raw_frame_log")
+        ?? builder.Configuration.GetValue("Ocpp:RawFrameLog:Enabled", false),
+    builder.Configuration["ocpp_raw_frame_log_path"]
+        ?? builder.Configuration["Ocpp:RawFrameLog:Path"]);
 
 // OCPP: transport, routing, sessions
 builder.Services.AddSingleton<WebSocketMessageService>();
@@ -84,6 +88,11 @@ builder.Services.AddHostedService<ChargeOrchestratorService>();
 
 var app = builder.Build();
 var startupLogger = app.Logger;
+
+if (OcppRawLog.IsEnabled)
+{
+    startupLogger.LogInformation("OCPP raw frame log enabled: {Path}", OcppRawLog.FilePath);
+}
 
 // HTTP pipeline
 if (app.Environment.IsDevelopment())

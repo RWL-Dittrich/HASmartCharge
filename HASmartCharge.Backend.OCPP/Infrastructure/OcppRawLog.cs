@@ -13,6 +13,9 @@ public static class OcppRawLog
 
     public static bool IsEnabled => _path is not null;
 
+    /// <summary>Resolved log file path, or null when disabled.</summary>
+    public static string? FilePath => _path;
+
     /// <summary>
     /// Enable/disable raw frame logging. Call once at startup with values bound from
     /// configuration. When <paramref name="enabled"/> is true, frames are appended to

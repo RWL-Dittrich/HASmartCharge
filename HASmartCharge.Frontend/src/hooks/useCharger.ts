@@ -26,7 +26,9 @@ export function useSetChargerAvailability() {
     mutationFn: (available: boolean) => setChargerAvailability(available),
     // Reload charger status so the UI reflects the new availability immediately
     // instead of waiting for the next 10s poll.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: chargerKeys.status }),
+    onSuccess: () => {
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: chargerKeys.status }), 100)
+    },
   })
 }
 
