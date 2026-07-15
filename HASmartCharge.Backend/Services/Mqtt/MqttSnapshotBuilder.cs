@@ -128,7 +128,7 @@ public sealed class MqttSnapshotBuilder
             ConnectorStatus: connectorStatusStr,
             SessionEnergyKwh: Num(sessionEnergyKwh),
             SessionCost: Num(sessionCost),
-            LastHeartbeat: Timestamp(status?.LastUpdated),
+            LastHeartbeat: Timestamp(status?.LastHeartbeat),
             PlanDeadline: Timestamp(plan?.DeadlineUtc),
             PlanTargetSoc: plan is null ? Unknown : plan.TargetSocPercent.ToString(CultureInfo.InvariantCulture),
             PlanRequiredKwh: plan is null ? Unknown : Num(plan.EstimatedEnergyKwh),

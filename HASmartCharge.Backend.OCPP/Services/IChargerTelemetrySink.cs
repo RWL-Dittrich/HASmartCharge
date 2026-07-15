@@ -13,6 +13,7 @@ public interface IChargerTelemetrySink
     void OnConnected(string chargePointId);
     void OnDisconnected(string chargePointId);
     void OnBoot(string chargePointId, ChargerInfo info);
+    void OnHeartbeat(string chargePointId);
     void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode);
     void OnTransactionStarted(string chargePointId, int connectorId, int transactionId, int meterStartWh, string? idTag, DateTimeOffset startedAt);
     void OnTransactionStopped(string chargePointId, int transactionId, int meterStopWh, string? reason, DateTimeOffset stoppedAt);

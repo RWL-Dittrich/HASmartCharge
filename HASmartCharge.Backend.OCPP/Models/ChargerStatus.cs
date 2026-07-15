@@ -10,7 +10,14 @@ public class ChargerStatus
     public string ChargePointId { get; set; } = string.Empty;
     
     public DateTime LastUpdated { get; set; }
-    
+
+    /// <summary>
+    /// When the charger's last OCPP Heartbeat arrived. Distinct from <see cref="LastUpdated"/>
+    /// (any telemetry): an idle charger sends no MeterValues, so Heartbeat is the only proof
+    /// of life and this is what the dashboard/MQTT "last heartbeat" reflects.
+    /// </summary>
+    public DateTime? LastHeartbeat { get; set; }
+
     public bool IsConnected { get; set; }
     
     public DateTime? ConnectedAt { get; set; }
