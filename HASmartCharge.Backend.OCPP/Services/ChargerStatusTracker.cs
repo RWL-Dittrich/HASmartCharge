@@ -52,6 +52,15 @@ public class ChargerStatusTracker : IChargerTelemetrySink
             chargePointId, info.Vendor, info.Model);
     }
 
+    public void OnHeartbeat(string chargePointId)
+    {
+        var status = GetOrAdd(chargePointId);
+        var now = DateTime.UtcNow;
+        status.LastHeartbeat = now;
+        status.LastUpdated = now;
+        _logger.LogDebug("Heartbeat from {ChargePointId}", chargePointId);
+    }
+
     public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode)
     {
         var charger = GetOrAdd(chargePointId);

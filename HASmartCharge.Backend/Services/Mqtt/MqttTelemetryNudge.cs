@@ -28,6 +28,8 @@ public sealed class MqttTelemetryNudge : IChargerTelemetrySink
     public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode) => Nudge();
 
     public void OnBoot(string chargePointId, ChargerInfo info) { }
+    // Heartbeat updates only a timestamp; the 10s publisher tick carries it. No sub-second nudge needed.
+    public void OnHeartbeat(string chargePointId) { }
     public void OnTransactionStarted(string chargePointId, int connectorId, int transactionId, int meterStartWh, string? idTag, DateTimeOffset startedAt) { }
     public void OnTransactionStopped(string chargePointId, int transactionId, int meterStopWh, string? reason, DateTimeOffset stoppedAt) { }
     public void OnMeterValues(string chargePointId, MeterValuesRequest values) { }

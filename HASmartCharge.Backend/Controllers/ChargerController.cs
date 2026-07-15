@@ -77,7 +77,7 @@ public class ChargerController : ControllerBase
             currentPowerKw = OcppValueHelpers.ToKw(measurands?.PowerActiveImport),
             sessionEnergyKwh,
             sessionCost,
-            lastHeartbeatAt = status?.LastUpdated
+            lastHeartbeatAt = status?.LastHeartbeat
         });
     }
 

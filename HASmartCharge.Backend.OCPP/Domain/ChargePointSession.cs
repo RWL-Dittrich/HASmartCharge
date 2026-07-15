@@ -148,6 +148,7 @@ public class ChargePointSession : IChargePointSession
     private object HandleHeartbeat()
     {
         _logger.LogDebug("[{ChargePointId}] Heartbeat received", ChargePointId);
+        _telemetry.OnHeartbeat(ChargePointId);
         return new HeartbeatResponse { CurrentTime = DateTime.UtcNow };
     }
 

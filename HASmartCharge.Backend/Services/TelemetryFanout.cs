@@ -28,6 +28,9 @@ public class TelemetryFanout : IChargerTelemetrySink
     public void OnBoot(string chargePointId, ChargerInfo info) =>
         ForEach(s => s.OnBoot(chargePointId, info));
 
+    public void OnHeartbeat(string chargePointId) =>
+        ForEach(s => s.OnHeartbeat(chargePointId));
+
     public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode) =>
         ForEach(s => s.OnConnectorStatus(chargePointId, connectorId, status, errorCode));
 

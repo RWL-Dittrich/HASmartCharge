@@ -86,6 +86,11 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
         // No-op.
     }
 
+    public void OnHeartbeat(string chargePointId)
+    {
+        // No-op: liveness/heartbeat timing is ChargerStatusTracker's concern.
+    }
+
     public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode)
     {
         // Some chargers never emit StopTransaction; they signal the end of a transaction by
