@@ -34,7 +34,9 @@ public class ChargePlanFactory : IChargePlanFactory
         var target = targetSocPercent ?? car.TargetSocPercent;
 
         var existingPlans = await _dbContext.ChargePlans
-            .Where(p => p.Status == ChargePlanStatus.Pending || p.Status == ChargePlanStatus.Active)
+            .Where(p => p.Status == ChargePlanStatus.Pending
+                || p.Status == ChargePlanStatus.Active
+                || p.Status == ChargePlanStatus.MissedDeadline)
             .ToListAsync(ct);
 
         var now = DateTime.UtcNow;

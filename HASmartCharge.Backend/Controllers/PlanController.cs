@@ -74,12 +74,14 @@ public class PlanController : ControllerBase
         return Ok(ToDto(plan));
     }
 
-    /// <summary>Cancels the active/pending plan.</summary>
+    /// <summary>Cancels the active/pending/missed-deadline plan.</summary>
     [HttpDelete]
     public async Task<IActionResult> CancelPlan(CancellationToken ct)
     {
         var plan = await _dbContext.ChargePlans
-            .Where(p => p.Status == ChargePlanStatus.Pending || p.Status == ChargePlanStatus.Active)
+            .Where(p => p.Status == ChargePlanStatus.Pending
+                || p.Status == ChargePlanStatus.Active
+                || p.Status == ChargePlanStatus.MissedDeadline)
             .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync(ct);
 

@@ -190,8 +190,9 @@ public class ChargeOrchestratorService : BackgroundService
     }
 
     /// <summary>
-    /// When auto-scheduling is enabled, detects the plug-in rising edge and, if no plan is already
-    /// in flight, creates one for the next departure resolved from the weekly pattern + overrides.
+    /// When auto-scheduling is enabled, detects the plug-in rising edge, retires any plan whose
+    /// deadline has already passed, and — if no plan for an upcoming departure is still in flight —
+    /// creates one for the next departure resolved from the weekly pattern + overrides.
     /// </summary>
     private async Task TryAutoArmAsync(
         IServiceProvider services,
@@ -215,10 +216,32 @@ public class ChargeOrchestratorService : BackgroundService
             return;
         }
 
-        var hasPlan = await dbContext.ChargePlans.AnyAsync(p => _relevantStatuses.Contains(p.Status), ct);
-        if (hasPlan)
+        // Retire plans whose deadline is already behind us. Nothing else moves a plan out of
+        // MissedDeadline, so without this a single missed departure (target not reached in time,
+        // or the car unplugged mid-charge) leaves a relevant plan stuck forever and blocks every
+        // future auto-arm. A fresh plug-in is always for an upcoming departure, so a past-deadline
+        // plan is dead — only a plan whose deadline is still ahead counts as "already armed".
+        var now = DateTime.UtcNow;
+        var relevantPlans = await dbContext.ChargePlans
+            .Where(p => _relevantStatuses.Contains(p.Status))
+            .ToListAsync(ct);
+
+        var stale = relevantPlans.Where(p => p.DeadlineUtc <= now).ToList();
+        foreach (var expired in stale)
         {
-            _logger.LogInformation("Auto-schedule: car plugged in but a plan is already active; not creating another.");
+            expired.Status = ChargePlanStatus.Cancelled;
+            expired.CompletedAt = now;
+        }
+
+        if (stale.Count > 0)
+        {
+            await dbContext.SaveChangesAsync(ct);
+            _logger.LogInformation("Auto-schedule: cancelled {Count} stale plan(s) past their deadline.", stale.Count);
+        }
+
+        if (relevantPlans.Any(p => p.DeadlineUtc > now))
+        {
+            _logger.LogInformation("Auto-schedule: car plugged in but a plan for an upcoming departure is already active; not creating another.");
             return;
         }
 
