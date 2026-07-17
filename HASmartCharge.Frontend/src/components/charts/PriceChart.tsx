@@ -90,7 +90,8 @@ export function PriceChart({ prices, selectedHours, currency, height = 220 }: Pr
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} accessibilityLayer={false}>
           <XAxis
-            dataKey="label"
+            dataKey="hourStartUtc"
+            tickFormatter={formatHourLabel}
             tick={{ fill: '#8892a4', fontSize: 11 }}
             axisLine={{ stroke: '#2a3042' }}
             tickLine={false}
@@ -107,7 +108,7 @@ export function PriceChart({ prices, selectedHours, currency, height = 220 }: Pr
           <Tooltip content={<TooltipContent />} cursor={{ fill: '#232938' }} />
           {currentPoint && (
             <ReferenceLine
-              x={currentPoint.label}
+              x={currentPoint.hourStartUtc}
               stroke="#f59e0b"
               strokeDasharray="4 4"
               label={{ value: 'now', position: 'insideTopRight', fill: '#f59e0b', fontSize: 11 }}
