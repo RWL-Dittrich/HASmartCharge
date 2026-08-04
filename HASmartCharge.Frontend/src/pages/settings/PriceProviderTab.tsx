@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react'
 import { usePriceSettings, useUpdatePriceSettings } from '@/hooks/useSettings'
 import { useRefreshPrices } from '@/hooks/usePrices'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type { PriceProviderSettings } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
@@ -67,11 +68,10 @@ export function PriceProviderTab() {
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Refresh interval (minutes)</span>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             value={form.refreshMinutes}
-            onChange={(e) => setForm({ ...form, refreshMinutes: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, refreshMinutes: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>

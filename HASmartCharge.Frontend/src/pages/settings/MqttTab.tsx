@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Loader2, Wifi, WifiOff, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
+import { NumberInput } from '@/components/ui/NumberInput'
 import { useMqttSettings, useUpdateMqttSettings } from '@/hooks/useSettings'
 import { useMqttStatus, useTestMqtt } from '@/hooks/useMqtt'
 import type { MqttSettings } from '@/types/settings'
@@ -92,11 +93,10 @@ export function MqttTab() {
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Port</span>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             value={form.port}
-            onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, port: v })}
             className={inputClass}
           />
         </label>

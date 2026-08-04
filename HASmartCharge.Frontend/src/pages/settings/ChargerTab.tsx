@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useChargerSettings, useUpdateChargerSettings } from '@/hooks/useSettings'
 import { useReconfigureCharger, useSetChargerAvailability, useUnlockCharger } from '@/hooks/useCharger'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type { ChargerSettings } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
@@ -87,66 +88,60 @@ export function ChargerTab() {
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Max charge power (kW)</span>
-          <input
-            type="number"
+          <NumberInput
             step="0.1"
             value={form.maxChargeKw}
-            onChange={(e) => setForm({ ...form, maxChargeKw: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, maxChargeKw: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Connector ID</span>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             value={form.connectorId}
-            onChange={(e) => setForm({ ...form, connectorId: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, connectorId: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Charge power slider min (kW)</span>
-          <input
-            type="number"
+          <NumberInput
             min={0}
             step="0.1"
             value={form.chargePowerMinKw}
-            onChange={(e) => setForm({ ...form, chargePowerMinKw: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, chargePowerMinKw: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Charge power slider max (kW)</span>
-          <input
-            type="number"
+          <NumberInput
             min={0}
             step="0.1"
             value={form.chargePowerMaxKw}
-            onChange={(e) => setForm({ ...form, chargePowerMaxKw: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, chargePowerMaxKw: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Supply voltage (V, per phase)</span>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             step="1"
             value={form.supplyVoltage}
-            onChange={(e) => setForm({ ...form, supplyVoltage: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, supplyVoltage: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Number of phases</span>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={3}
             step="1"
             value={form.phaseCount}
-            onChange={(e) => setForm({ ...form, phaseCount: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, phaseCount: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
@@ -164,31 +159,28 @@ export function ChargerTab() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <label className="text-sm">
             <span className="text-[#8892a4] block mb-1">Heartbeat interval (s)</span>
-            <input
-              type="number"
+            <NumberInput
               min={1}
               value={form.heartbeatInterval}
-              onChange={(e) => setForm({ ...form, heartbeatInterval: Number(e.target.value) })}
+              onChange={(v) => setForm({ ...form, heartbeatInterval: v })}
               className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
             />
           </label>
           <label className="text-sm">
             <span className="text-[#8892a4] block mb-1">Meter sample interval (s)</span>
-            <input
-              type="number"
+            <NumberInput
               min={1}
               value={form.meterValueSampleInterval}
-              onChange={(e) => setForm({ ...form, meterValueSampleInterval: Number(e.target.value) })}
+              onChange={(v) => setForm({ ...form, meterValueSampleInterval: v })}
               className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
             />
           </label>
           <label className="text-sm">
             <span className="text-[#8892a4] block mb-1">Clock-aligned interval (s)</span>
-            <input
-              type="number"
+            <NumberInput
               min={1}
               value={form.clockAlignedDataInterval}
-              onChange={(e) => setForm({ ...form, clockAlignedDataInterval: Number(e.target.value) })}
+              onChange={(v) => setForm({ ...form, clockAlignedDataInterval: v })}
               className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
             />
           </label>
