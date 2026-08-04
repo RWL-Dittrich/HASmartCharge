@@ -23,7 +23,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "baseUrl": ".",
+    /* No baseUrl: deprecated in TS 6, removed in TS 7. Path mappings resolve relative to this
+       file, and the matching runtime alias lives in vite.config.ts. */
     "paths": {
       "@/*": ["./src/*"]
     }

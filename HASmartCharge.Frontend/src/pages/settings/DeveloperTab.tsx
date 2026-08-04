@@ -1,13 +1,43 @@
-import { useState } from 'react'
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Trash2 } from 'lucide-react'
-import { Badge } from '@/components/ui/Badge'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
+import Editor from 'react-simple-code-editor'
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Loader2, Trash2 } from 'lucide-react'
+import { Badge, type BadgeTone } from '@/components/ui/Badge'
 import { useSendOcppCall } from '@/hooks/useCharger'
 import { useOcppFrameLog } from '@/hooks/useOcppFrameLog'
-import { formatDateTime } from '@/lib/utils'
+import { cn, formatDateTime } from '@/lib/utils'
+import { highlightJson, tryFormatJson } from '@/lib/highlightJson'
 import { ApiError } from '@/api/client'
+import type { OcppFrame } from '@/types/charger'
+import { DOCUMENTED_ACTIONS } from './ocppDocs'
+
+// Lazy so react-markdown (~165 kB) stays out of the main bundle — it is only ever needed here.
+const OcppDocPanel = lazy(() =>
+  import('./OcppDocPanel').then((m) => ({ default: m.OcppDocPanel })),
+)
 
 const inputClass =
   'w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500'
+
+/** Card wrapper: title bar with optional right-side controls, then the body. */
+function Panel({
+  title,
+  actions,
+  children,
+}: {
+  title: string
+  actions?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="rounded-lg border border-[#2a3042] bg-[#151a26] shadow-lg shadow-black/20">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#2a3042] px-4 py-3">
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        {actions && <div className="flex items-center gap-2">{actions}</div>}
+      </header>
+      <div className="p-4">{children}</div>
+    </section>
+  )
+}
 
 interface CallTemplate {
   action: string
@@ -83,6 +113,31 @@ function formatPayload(payload: CallTemplate['payload']): string {
   return JSON.stringify(typeof payload === 'function' ? payload() : payload, null, 2)
 }
 
+// Templates and ./ocpp-docs/*.md are matched by action name, so a rename on one side silently
+// drops the reference panel. Shout about it in dev rather than shipping a blank panel.
+if (import.meta.env.DEV) {
+  const undocumented = CALL_TEMPLATES.map((t) => t.action).filter(
+    (a) => !DOCUMENTED_ACTIONS.includes(a),
+  )
+  if (undocumented.length > 0) {
+    console.warn(`No ocpp-docs/<Action>.md for: ${undocumented.join(', ')}`)
+  }
+}
+
+/** Prism-highlighted, read-only JSON block. */
+function JsonBlock({ code, className }: { code: string; className?: string }) {
+  return (
+    <pre
+      className={cn(
+        'overflow-x-auto rounded-md border border-[#2a3042] bg-[#0f1117] p-3 font-mono text-xs leading-relaxed',
+        className,
+      )}
+    >
+      <code dangerouslySetInnerHTML={{ __html: highlightJson(code) }} />
+    </pre>
+  )
+}
+
 function OcppCallPanel() {
   const [action, setAction] = useState(CALL_TEMPLATES[0].action)
   const [payloadText, setPayloadText] = useState(formatPayload(CALL_TEMPLATES[0].payload))
@@ -127,76 +182,175 @@ function OcppCallPanel() {
   const canSend = action.trim().length > 0 && !parseError && !sendCall.isPending
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-white">Send OCPP call</h3>
-      <p className="flex items-start gap-2 text-xs text-amber-400">
+    <Panel title="Send OCPP call">
+      <p className="mb-4 flex items-start gap-2 text-xs text-amber-400">
         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
         These calls go straight to the charger over the active OCPP session and can interrupt an
         active charge session. Use with care.
       </p>
 
-      <label className="text-sm block">
-        <span className="text-[#8892a4] block mb-1">Template</span>
-        <select
-          onChange={(e) => applyTemplate(e.target.value)}
-          defaultValue={CALL_TEMPLATES[0].action}
-          className={inputClass}
-        >
-          {CALL_TEMPLATES.map((t) => (
-            <option key={t.action} value={t.action}>
-              {t.action}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="space-y-4">
+          <label className="text-sm block">
+            <span className="text-[#8892a4] block mb-1">Template</span>
+            <select
+              onChange={(e) => applyTemplate(e.target.value)}
+              defaultValue={CALL_TEMPLATES[0].action}
+              className={inputClass}
+            >
+              {CALL_TEMPLATES.map((t) => (
+                <option key={t.action} value={t.action}>
+                  {t.action}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <label className="text-sm block">
-        <span className="text-[#8892a4] block mb-1">Action</span>
-        <input value={action} onChange={(e) => setAction(e.target.value)} className={inputClass} />
-      </label>
+          <label className="text-sm block">
+            <span className="text-[#8892a4] block mb-1">Action</span>
+            <input
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              className={inputClass}
+            />
+          </label>
 
-      <label className="text-sm block">
-        <span className="text-[#8892a4] block mb-1">Payload (JSON)</span>
-        <textarea
-          value={payloadText}
-          onChange={(e) => handlePayloadChange(e.target.value)}
-          rows={10}
-          className={`${inputClass} font-mono text-xs`}
-        />
-      </label>
-      {parseError && <div className="text-sm text-red-400">{parseError}</div>}
+          <div className="text-sm">
+            <div className="mb-1 flex items-end justify-between gap-2">
+              <span className="text-[#8892a4]">Payload (JSON)</span>
+              <button
+                type="button"
+                onClick={() => handlePayloadChange(tryFormatJson(payloadText))}
+                disabled={!!parseError}
+                className="text-xs text-blue-400 hover:underline disabled:opacity-40 disabled:hover:no-underline"
+              >
+                Format
+              </button>
+            </div>
+            {/* Textareas cannot be syntax-highlighted, so this is a transparent textarea layered
+                over a Prism-highlighted <pre> — what react-simple-code-editor exists to do. */}
+            <div
+              className={`overflow-auto rounded-md border bg-[#0f1117] focus-within:border-blue-500 ${
+                parseError ? 'border-red-500/60' : 'border-[#2a3042]'
+              }`}
+            >
+              <Editor
+                value={payloadText}
+                onValueChange={handlePayloadChange}
+                highlight={highlightJson}
+                padding={12}
+                tabSize={2}
+                insertSpaces
+                textareaClassName="outline-none"
+                className="min-h-[16rem] font-mono text-xs leading-relaxed text-[#c3cad8]"
+              />
+            </div>
+          </div>
+          {parseError && <div className="text-xs text-red-400">{parseError}</div>}
 
-      <button
-        onClick={handleSend}
-        disabled={!canSend}
-        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-      >
-        {sendCall.isPending ? 'Sending…' : 'Send'}
-      </button>
+          <button
+            onClick={handleSend}
+            disabled={!canSend}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+          >
+            {sendCall.isPending ? 'Sending…' : 'Send'}
+          </button>
 
-      {(sendCall.data || sendCall.isError) && (
-        <div className="space-y-2">
-          <Badge tone={sendCall.data?.success ? 'success' : 'danger'}>
-            {sendCall.data?.success ? 'Success' : 'Failed'}
-          </Badge>
-          <pre className="max-w-full overflow-x-auto rounded-md border border-[#2a3042] bg-[#0f1117] p-3 text-xs text-[#c3cad8]">
-            {sendCall.data
-              ? JSON.stringify(sendCall.data, null, 2)
-              : sendCall.error instanceof ApiError
-                ? sendCall.error.message
-                : 'Request failed.'}
-          </pre>
+          {(sendCall.data || sendCall.isError) && (
+            <div className="space-y-2">
+              <Badge tone={sendCall.data?.success ? 'success' : 'danger'}>
+                {sendCall.data?.success ? 'Success' : 'Failed'}
+              </Badge>
+              {sendCall.data ? (
+                <JsonBlock code={JSON.stringify(sendCall.data, null, 2)} />
+              ) : (
+                <pre className="overflow-x-auto rounded-md border border-[#2a3042] bg-[#0f1117] p-3 text-xs text-red-300">
+                  {sendCall.error instanceof ApiError ? sendCall.error.message : 'Request failed.'}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
-      )}
-    </div>
+
+        <Suspense
+          fallback={
+            <div className="flex items-center gap-2 rounded-lg border border-[#2a3042] bg-[#0f1117]/40 p-4 text-xs text-[#8892a4]">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading reference…
+            </div>
+          }
+        >
+          <OcppDocPanel action={action} />
+        </Suspense>
+      </div>
+    </Panel>
   )
 }
 
-const CONNECTION_BADGE: Record<ReturnType<typeof useOcppFrameLog>['state'], { tone: 'success' | 'warning' | 'danger' | 'info'; label: string }> = {
+const CONNECTION_BADGE: Record<
+  ReturnType<typeof useOcppFrameLog>['state'],
+  { tone: BadgeTone; label: string }
+> = {
   connecting: { tone: 'info', label: 'Connecting…' },
   connected: { tone: 'success', label: 'Connected' },
   reconnecting: { tone: 'warning', label: 'Reconnecting…' },
   disconnected: { tone: 'danger', label: 'Disconnected' },
+}
+
+// OCPP 1.6J wire envelope: [messageTypeId, uniqueId, ...]. CALL adds the action then the payload,
+// CALLRESULT adds the payload, CALLERROR adds errorCode, errorDescription, errorDetails.
+const MESSAGE_TYPES: Record<number, { label: string; tone: BadgeTone }> = {
+  2: { label: 'CALL', tone: 'info' },
+  3: { label: 'RESULT', tone: 'success' },
+  4: { label: 'ERROR', tone: 'danger' },
+}
+
+/** Envelope summary for the frame header, plus the frame re-serialized with indentation. */
+function describeFrame(frame: string) {
+  try {
+    const parsed = JSON.parse(frame)
+    if (!Array.isArray(parsed)) return { pretty: JSON.stringify(parsed, null, 2) }
+
+    const [messageType, uniqueId, third] = parsed as [number, string, unknown]
+    const type = MESSAGE_TYPES[messageType]
+    return {
+      pretty: JSON.stringify(parsed, null, 2),
+      typeLabel: type?.label ?? `TYPE ${messageType}`,
+      typeTone: type?.tone ?? 'neutral',
+      // The third element is the action on a CALL and the error code on a CALLERROR.
+      subject: messageType === 2 || messageType === 4 ? String(third ?? '') : undefined,
+      uniqueId: String(uniqueId ?? ''),
+    }
+  } catch {
+    // A frame the charger sent that isn't valid JSON is exactly what you want to see verbatim.
+    return { pretty: frame }
+  }
+}
+
+function FrameRow({ frame }: { frame: OcppFrame }) {
+  const { pretty, typeLabel, typeTone, subject, uniqueId } = describeFrame(frame.frame)
+  const inbound = frame.direction === 'in'
+
+  return (
+    <div className="rounded-md border border-[#2a3042] bg-[#111621]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#2a3042] px-2.5 py-1.5 text-xs">
+        <Badge tone={inbound ? 'info' : 'neutral'} className="shrink-0">
+          {inbound ? <ArrowDownToLine className="h-3 w-3" /> : <ArrowUpFromLine className="h-3 w-3" />}
+          {inbound ? 'IN' : 'OUT'}
+        </Badge>
+        {typeLabel && (
+          <Badge tone={typeTone} className="shrink-0">
+            {typeLabel}
+          </Badge>
+        )}
+        {subject && <span className="font-medium text-white">{subject}</span>}
+        <span className="ml-auto flex items-center gap-2 text-[#8892a4]">
+          {uniqueId && <span className="font-mono">#{uniqueId}</span>}
+          {formatDateTime(frame.timestampUtc)}
+        </span>
+      </div>
+      <JsonBlock code={pretty} className="rounded-none border-0 bg-transparent" />
+    </div>
+  )
 }
 
 function OcppLogPanel() {
@@ -204,10 +358,11 @@ function OcppLogPanel() {
   const badge = CONNECTION_BADGE[state]
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Live OCPP log</h3>
-        <div className="flex items-center gap-2">
+    <Panel
+      title="Live OCPP log"
+      actions={
+        <>
+          <span className="text-xs text-[#8892a4]">{frames.length} / 50 frames</span>
           <Badge tone={badge.tone} pulse={state === 'connected'}>
             {badge.label}
           </Badge>
@@ -217,48 +372,30 @@ function OcppLogPanel() {
           >
             <Trash2 className="h-3.5 w-3.5" /> Clear
           </button>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {frames.length === 0 ? (
-        <p className="text-sm text-[#8892a4] py-6">
-          No frames yet. Frames appear here as the charger talks to the backend — expect at least
-          a Heartbeat roughly every heartbeat interval once connected.
+        <p className="py-6 text-sm text-[#8892a4]">
+          No frames yet. Frames appear here as the charger talks to the backend — expect at least a
+          Heartbeat roughly every heartbeat interval once connected.
         </p>
       ) : (
-        <div className="space-y-1.5 max-h-[32rem] overflow-y-auto">
+        <div className="max-h-[36rem] space-y-2 overflow-y-auto pr-1">
           {frames.map((f, i) => (
-            <div
-              key={`${f.timestampUtc}-${i}`}
-              className="flex items-start gap-2 rounded-md border border-[#2a3042] bg-[#0f1117] px-2.5 py-2 text-xs"
-            >
-              <Badge tone={f.direction === 'in' ? 'info' : 'neutral'} className="shrink-0">
-                {f.direction === 'in' ? (
-                  <ArrowDownToLine className="h-3 w-3" />
-                ) : (
-                  <ArrowUpFromLine className="h-3 w-3" />
-                )}
-                {f.direction === 'in' ? 'IN' : 'OUT'}
-              </Badge>
-              <span className="shrink-0 text-[#8892a4]">{formatDateTime(f.timestampUtc)}</span>
-              <span className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-[#c3cad8]">
-                {f.frame}
-              </span>
-            </div>
+            <FrameRow key={`${f.timestampUtc}-${i}`} frame={f} />
           ))}
         </div>
       )}
-    </div>
+    </Panel>
   )
 }
 
 export function DeveloperTab() {
   return (
-    <div className="max-w-3xl space-y-8">
+    <div className="space-y-6">
       <OcppCallPanel />
-      <div className="border-t border-[#2a3042] pt-6">
-        <OcppLogPanel />
-      </div>
+      <OcppLogPanel />
     </div>
   )
 }

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { TopBar } from '@/components/layout/TopBar'
 import { cn } from '@/lib/utils'
 import { PriceProviderTab } from '@/pages/settings/PriceProviderTab'
@@ -6,7 +7,12 @@ import { CarTab } from '@/pages/settings/CarTab'
 import { ChargerTab } from '@/pages/settings/ChargerTab'
 import { HomeAssistantTab } from '@/pages/settings/HomeAssistantTab'
 import { MqttTab } from '@/pages/settings/MqttTab'
-import { DeveloperTab } from '@/pages/settings/DeveloperTab'
+
+// Lazy: the developer tab pulls in prism, the code editor and react-markdown (~190 kB) that no
+// other page needs.
+const DeveloperTab = lazy(() =>
+  import('@/pages/settings/DeveloperTab').then((m) => ({ default: m.DeveloperTab })),
+)
 
 const TABS = [
   { id: 'price', label: 'Price Provider', Component: PriceProviderTab },
@@ -44,7 +50,15 @@ export function SettingsPage() {
         </div>
 
         <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 sm:p-5">
-          <ActiveComponent />
+          <Suspense
+            fallback={
+              <div className="flex items-center gap-2 py-6 text-sm text-[#8892a4]">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            }
+          >
+            <ActiveComponent />
+          </Suspense>
         </div>
       </div>
     </div>
