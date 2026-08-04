@@ -1,6 +1,13 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 import Editor from 'react-simple-code-editor'
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Loader2, Trash2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ChevronRight,
+  Loader2,
+  Trash2,
+} from 'lucide-react'
 import { Badge, type BadgeTone } from '@/components/ui/Badge'
 import { useSendOcppCall } from '@/hooks/useCharger'
 import { useOcppFrameLog } from '@/hooks/useOcppFrameLog'
@@ -18,23 +25,33 @@ const OcppDocPanel = lazy(() =>
 const inputClass =
   'w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500'
 
-/** Card wrapper: title bar with optional right-side controls, then the body. */
+/**
+ * Card wrapper: title bar with optional right-side controls, then the body. `fill` makes the card
+ * take the height its grid cell offers and scroll its body instead of growing the page.
+ */
 function Panel({
   title,
   actions,
+  fill,
   children,
 }: {
   title: string
   actions?: ReactNode
+  fill?: boolean
   children: ReactNode
 }) {
   return (
-    <section className="rounded-lg border border-[#2a3042] bg-[#151a26] shadow-lg shadow-black/20">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#2a3042] px-4 py-3">
+    <section
+      className={cn(
+        'rounded-lg border border-[#2a3042] bg-[#151a26] shadow-lg shadow-black/20',
+        fill && 'flex min-h-0 flex-col lg:flex-1 lg:overflow-hidden',
+      )}
+    >
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#2a3042] px-4 py-3">
         <h3 className="text-sm font-semibold text-white">{title}</h3>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </header>
-      <div className="p-4">{children}</div>
+      <div className={cn('p-4', fill && 'min-h-0 flex-1 lg:overflow-y-auto')}>{children}</div>
     </section>
   )
 }
@@ -138,8 +155,13 @@ function JsonBlock({ code, className }: { code: string; className?: string }) {
   )
 }
 
-function OcppCallPanel() {
-  const [action, setAction] = useState(CALL_TEMPLATES[0].action)
+function OcppCallPanel({
+  action,
+  setAction,
+}: {
+  action: string
+  setAction: (action: string) => void
+}) {
   const [payloadText, setPayloadText] = useState(formatPayload(CALL_TEMPLATES[0].payload))
   const [parseError, setParseError] = useState<string | null>(null)
   const sendCall = useSendOcppCall()
@@ -182,17 +204,23 @@ function OcppCallPanel() {
   const canSend = action.trim().length > 0 && !parseError && !sendCall.isPending
 
   return (
-    <Panel title="Send OCPP call">
-      <p className="mb-4 flex items-start gap-2 text-xs text-amber-400">
-        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-        These calls go straight to the charger over the active OCPP session and can interrupt an
-        active charge session. Use with care.
-      </p>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="space-y-4">
-          <label className="text-sm block">
-            <span className="text-[#8892a4] block mb-1">Template</span>
+    <Panel
+      title="Send OCPP call"
+      actions={
+        <span
+          className="flex items-center gap-1.5 text-xs text-amber-400"
+          title="These calls go straight to the charger over the active OCPP session and can interrupt an active charge session."
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Goes straight to the charger — can interrupt a charge session
+        </span>
+      }
+    >
+      <div className="space-y-3">
+        {/* Template, Action and Send share one row so the three controls cost one row, not three. */}
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-sm">
+            <span className="mb-1 block text-[#8892a4]">Template</span>
             <select
               onChange={(e) => applyTemplate(e.target.value)}
               defaultValue={CALL_TEMPLATES[0].action}
@@ -206,81 +234,70 @@ function OcppCallPanel() {
             </select>
           </label>
 
-          <label className="text-sm block">
-            <span className="text-[#8892a4] block mb-1">Action</span>
+          <label className="min-w-0 flex-1 text-sm">
+            <span className="mb-1 block text-[#8892a4]">Action</span>
             <input
               value={action}
               onChange={(e) => setAction(e.target.value)}
               className={inputClass}
             />
           </label>
-
-          <div className="text-sm">
-            <div className="mb-1 flex items-end justify-between gap-2">
-              <span className="text-[#8892a4]">Payload (JSON)</span>
-              <button
-                type="button"
-                onClick={() => handlePayloadChange(tryFormatJson(payloadText))}
-                disabled={!!parseError}
-                className="text-xs text-blue-400 hover:underline disabled:opacity-40 disabled:hover:no-underline"
-              >
-                Format
-              </button>
-            </div>
-            {/* Textareas cannot be syntax-highlighted, so this is a transparent textarea layered
-                over a Prism-highlighted <pre> — what react-simple-code-editor exists to do. */}
-            <div
-              className={`overflow-auto rounded-md border bg-[#0f1117] focus-within:border-blue-500 ${
-                parseError ? 'border-red-500/60' : 'border-[#2a3042]'
-              }`}
-            >
-              <Editor
-                value={payloadText}
-                onValueChange={handlePayloadChange}
-                highlight={highlightJson}
-                padding={12}
-                tabSize={2}
-                insertSpaces
-                textareaClassName="outline-none"
-                className="min-h-[16rem] font-mono text-xs leading-relaxed text-[#c3cad8]"
-              />
-            </div>
-          </div>
-          {parseError && <div className="text-xs text-red-400">{parseError}</div>}
-
           <button
             onClick={handleSend}
             disabled={!canSend}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+            className="shrink-0 rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
           >
             {sendCall.isPending ? 'Sending…' : 'Send'}
           </button>
-
-          {(sendCall.data || sendCall.isError) && (
-            <div className="space-y-2">
-              <Badge tone={sendCall.data?.success ? 'success' : 'danger'}>
-                {sendCall.data?.success ? 'Success' : 'Failed'}
-              </Badge>
-              {sendCall.data ? (
-                <JsonBlock code={JSON.stringify(sendCall.data, null, 2)} />
-              ) : (
-                <pre className="overflow-x-auto rounded-md border border-[#2a3042] bg-[#0f1117] p-3 text-xs text-red-300">
-                  {sendCall.error instanceof ApiError ? sendCall.error.message : 'Request failed.'}
-                </pre>
-              )}
-            </div>
-          )}
         </div>
 
-        <Suspense
-          fallback={
-            <div className="flex items-center gap-2 rounded-lg border border-[#2a3042] bg-[#0f1117]/40 p-4 text-xs text-[#8892a4]">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading reference…
-            </div>
-          }
-        >
-          <OcppDocPanel action={action} />
-        </Suspense>
+        <div className="text-sm">
+          <div className="mb-1 flex items-end justify-between gap-2">
+            <span className="text-[#8892a4]">Payload (JSON)</span>
+            <button
+              type="button"
+              onClick={() => handlePayloadChange(tryFormatJson(payloadText))}
+              disabled={!!parseError}
+              className="text-xs text-blue-400 hover:underline disabled:opacity-40 disabled:hover:no-underline"
+            >
+              Format
+            </button>
+          </div>
+          {/* Textareas cannot be syntax-highlighted, so this is a transparent textarea layered
+              over a Prism-highlighted <pre> — what react-simple-code-editor exists to do. */}
+          <div
+            className={`overflow-auto rounded-md border bg-[#0f1117] focus-within:border-blue-500 ${
+              parseError ? 'border-red-500/60' : 'border-[#2a3042]'
+            }`}
+          >
+            <Editor
+              value={payloadText}
+              onValueChange={handlePayloadChange}
+              highlight={highlightJson}
+              padding={12}
+              tabSize={2}
+              insertSpaces
+              textareaClassName="outline-none"
+              className="min-h-[9rem] font-mono text-xs leading-relaxed text-[#c3cad8]"
+            />
+          </div>
+        </div>
+        {parseError && <div className="text-xs text-red-400">{parseError}</div>}
+
+        {(sendCall.data || sendCall.isError) && (
+          <div className="space-y-2">
+            <Badge tone={sendCall.data?.success ? 'success' : 'danger'}>
+              {sendCall.data?.success ? 'Success' : 'Failed'}
+            </Badge>
+            {sendCall.data ? (
+              <JsonBlock code={JSON.stringify(sendCall.data, null, 2)} />
+            ) : (
+              <pre className="overflow-x-auto rounded-md border border-[#2a3042] bg-[#0f1117] p-3 text-xs text-red-300">
+                {sendCall.error instanceof ApiError ? sendCall.error.message : 'Request failed.'}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
     </Panel>
   )
@@ -331,8 +348,12 @@ function FrameRow({ frame }: { frame: OcppFrame }) {
   const inbound = frame.direction === 'in'
 
   return (
-    <div className="rounded-md border border-[#2a3042] bg-[#111621]">
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#2a3042] px-2.5 py-1.5 text-xs">
+    // Collapsed by default: 50 pretty-printed frames expanded at once is what made this page a
+    // wall of JSON. <details> keeps the scan line and puts the body one click away. No border or
+    // card of its own — the list divider carries the separation, so nesting stops at the panel.
+    <details className="group">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-2 py-2 text-xs hover:bg-[#1b2130] marker:content-none [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="h-3 w-3 shrink-0 text-[#8892a4] transition-transform group-open:rotate-90" />
         <Badge tone={inbound ? 'info' : 'neutral'} className="shrink-0">
           {inbound ? <ArrowDownToLine className="h-3 w-3" /> : <ArrowUpFromLine className="h-3 w-3" />}
           {inbound ? 'IN' : 'OUT'}
@@ -344,12 +365,12 @@ function FrameRow({ frame }: { frame: OcppFrame }) {
         )}
         {subject && <span className="font-medium text-white">{subject}</span>}
         <span className="ml-auto flex items-center gap-2 text-[#8892a4]">
-          {uniqueId && <span className="font-mono">#{uniqueId}</span>}
+          {uniqueId && <span className="truncate font-mono">#{uniqueId.slice(0, 8)}</span>}
           {formatDateTime(frame.timestampUtc)}
         </span>
-      </div>
-      <JsonBlock code={pretty} className="rounded-none border-0 bg-transparent" />
-    </div>
+      </summary>
+      <JsonBlock code={pretty} className="mb-2 rounded-none border-0 border-l-2 border-[#2a3042]" />
+    </details>
   )
 }
 
@@ -360,9 +381,10 @@ function OcppLogPanel() {
   return (
     <Panel
       title="Live OCPP log"
+      fill
       actions={
         <>
-          <span className="text-xs text-[#8892a4]">{frames.length} / 50 frames</span>
+          <span className="text-xs text-[#8892a4]">{frames.length} frames</span>
           <Badge tone={badge.tone} pulse={state === 'connected'}>
             {badge.label}
           </Badge>
@@ -381,7 +403,7 @@ function OcppLogPanel() {
           Heartbeat roughly every heartbeat interval once connected.
         </p>
       ) : (
-        <div className="max-h-[36rem] space-y-2 overflow-y-auto pr-1">
+        <div className="max-h-[30rem] divide-y divide-[#232a3a] overflow-y-auto lg:max-h-none lg:overflow-visible">
           {frames.map((f, i) => (
             <FrameRow key={`${f.timestampUtc}-${i}`} frame={f} />
           ))}
@@ -392,10 +414,26 @@ function OcppLogPanel() {
 }
 
 export function DeveloperTab() {
+  // Lifted here because the reference column renders next to the call panel, not inside it.
+  const [action, setAction] = useState(CALL_TEMPLATES[0].action)
+
   return (
-    <div className="space-y-6">
-      <OcppCallPanel />
-      <OcppLogPanel />
+    // Two full-height columns on wide screens (call + log left, reference right), plain stack below.
+    <div className="flex flex-col gap-4 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-2 lg:gap-4">
+      <div className="flex flex-col gap-4 lg:min-h-0">
+        <OcppCallPanel action={action} setAction={setAction} />
+        <OcppLogPanel />
+      </div>
+
+      <Suspense
+        fallback={
+          <div className="flex items-center gap-2 rounded-lg border border-[#2a3042] bg-[#151a26] p-4 text-xs text-[#8892a4]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading reference…
+          </div>
+        }
+      >
+        <OcppDocPanel action={action} />
+      </Suspense>
     </div>
   )
 }
