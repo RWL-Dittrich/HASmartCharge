@@ -17,6 +17,9 @@ export function usePlanPreview(deadlineUtc: string | null, targetSocPercent?: nu
     queryKey: planKeys.preview(deadlineUtc ?? '', targetSocPercent),
     queryFn: () => getPlanPreview(deadlineUtc as string, targetSocPercent),
     enabled: Boolean(deadlineUtc),
+    // The preview carries the live battery SoC, so it has to keep polling — without this the
+    // dashboard's SoC tile shows whatever the value was when the page was opened.
+    refetchInterval: 30_000,
   })
 }
 

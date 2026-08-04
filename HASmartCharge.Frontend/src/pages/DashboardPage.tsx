@@ -104,8 +104,8 @@ export function DashboardPage() {
           />
           <StatCard
             title="Charger"
-            value={chargerStatus?.connected ? 'Connected' : 'Offline'}
-            change={chargerStatus?.connectorStatus ?? undefined}
+            value={chargerStatus?.connectorStatus ?? '—'}
+            change={chargerStatus?.connected ? 'Online' : 'Offline'}
             changePositive={chargerStatus?.connected}
           />
           <StatCard
