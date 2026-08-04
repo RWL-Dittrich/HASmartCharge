@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { useCarSettings, useUpdateCarSettings } from '@/hooks/useSettings'
 import { useHaServices } from '@/hooks/useHa'
 import { EntityPicker } from '@/components/settings/EntityPicker'
+import { NumberInput } from '@/components/ui/NumberInput'
 import type { CarSettings } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
@@ -136,34 +137,31 @@ export function CarTab() {
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Battery capacity (kWh)</span>
-          <input
-            type="number"
+          <NumberInput
             step="0.1"
             value={form.batteryCapacityKwh}
-            onChange={(e) => setForm({ ...form, batteryCapacityKwh: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, batteryCapacityKwh: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Default target SoC (%)</span>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={100}
             value={form.targetSocPercent}
-            onChange={(e) => setForm({ ...form, targetSocPercent: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, targetSocPercent: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Charge efficiency (0–1)</span>
-          <input
-            type="number"
+          <NumberInput
             step="0.01"
             min={0}
             max={1}
             value={form.chargeEfficiency}
-            onChange={(e) => setForm({ ...form, chargeEfficiency: Number(e.target.value) })}
+            onChange={(v) => setForm({ ...form, chargeEfficiency: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
         </label>
