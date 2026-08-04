@@ -31,11 +31,14 @@ export function SchedulePage() {
   const [debouncedTarget, setDebouncedTarget] = useState<number | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (carSettings && targetSoc === '') {
-      setTargetSoc(carSettings.targetSocPercent)
-    }
-  }, [carSettings, targetSoc])
+  // Seed from the car default exactly once, when settings first arrive. Keying this off
+  // `targetSoc === ''` in an effect meant clearing the field re-seeded it, so it could never be
+  // emptied to type a different number.
+  const [socSeeded, setSocSeeded] = useState(false)
+  if (carSettings && !socSeeded) {
+    setSocSeeded(true)
+    setTargetSoc(carSettings.targetSocPercent)
+  }
 
   useEffect(() => {
     const handle = setTimeout(() => {

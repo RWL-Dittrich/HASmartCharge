@@ -290,7 +290,12 @@ function OcppCallPanel({
               {sendCall.data?.success ? 'Success' : 'Failed'}
             </Badge>
             {sendCall.data ? (
-              <JsonBlock code={JSON.stringify(sendCall.data, null, 2)} />
+              // GetConfiguration and friends return hundreds of lines — cap it so the block
+              // scrolls internally instead of shoving the log off the bottom of the page.
+              <JsonBlock
+                code={JSON.stringify(sendCall.data, null, 2)}
+                className="max-h-[24rem] overflow-y-auto"
+              />
             ) : (
               <pre className="overflow-x-auto rounded-md border border-[#2a3042] bg-[#0f1117] p-3 text-xs text-red-300">
                 {sendCall.error instanceof ApiError ? sendCall.error.message : 'Request failed.'}
