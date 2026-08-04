@@ -5,6 +5,7 @@ using HASmartCharge.Backend.HomeAssistant.BackgroundServices;
 using HASmartCharge.Backend.HomeAssistant.Configuration;
 using HASmartCharge.Backend.HomeAssistant.Services;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
+using HASmartCharge.Backend.Hubs;
 using HASmartCharge.Backend.OCPP.Application;
 using HASmartCharge.Backend.OCPP.Domain;
 using HASmartCharge.Backend.OCPP.Infrastructure;
@@ -24,6 +25,7 @@ builder.Configuration.AddJsonFile("/data/options.json", optional: true, reloadOn
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
+builder.Services.AddSignalR();
 
 // Home Assistant auth options
 builder.Services.Configure<HomeAssistantAuthOptions>(
@@ -61,6 +63,9 @@ builder.Services.AddSingleton<OcppConnectionOrchestrator>();
 builder.Services.AddSingleton<ChargerStatusTracker>();
 builder.Services.AddSingleton<ChargeSessionRecorder>();
 builder.Services.AddSingleton<MqttTelemetryNudge>();
+
+// OCPP: developer-tab live frame log (last 50 frames, broadcast over SignalR)
+builder.Services.AddSingleton<OcppFrameLogBuffer>();
 builder.Services.AddSingleton<IChargerTelemetrySink>(sp => new TelemetryFanout(
     [
         sp.GetRequiredService<ChargerStatusTracker>(),
@@ -110,6 +115,10 @@ if (OcppRawLog.IsEnabled)
     startupLogger.LogInformation("OCPP raw frame log enabled: {Path}", OcppRawLog.FilePath);
 }
 
+// Feed the developer-tab live OCPP frame log: every frame observed on the OCPP session layer
+// is buffered and broadcast to connected browsers via OcppLogHub.
+OcppRawLog.FrameObserved += app.Services.GetRequiredService<OcppFrameLogBuffer>().Publish;
+
 // HTTP pipeline
 if (app.Environment.IsDevelopment())
 {
@@ -121,6 +130,11 @@ app.UseWebSockets();
 app.UseStaticFiles();
 app.UseAuthorization();
 app.MapControllers();
+
+// Developer-tab live OCPP frame log. Kept under /api so both the Vite dev proxy and the HA
+// ingress route it with no extra config, and registered before MapFallback so the SPA
+// catch-all below doesn't swallow it.
+app.MapHub<OcppLogHub>("/api/hubs/ocpp-log");
 
 // Serve the bundled SPA (present in the container image under wwwroot). Any route that
 // isn't an API/OCPP endpoint or a static file returns index.html, with <base href> set

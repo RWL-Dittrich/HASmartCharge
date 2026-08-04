@@ -5,6 +5,9 @@ namespace HASmartCharge.Backend.OCPP.Infrastructure;
 /// straight to a file independent of the ILogger level configuration. TEMPORARY
 /// troubleshooting aid — configured via the <c>Ocpp:RawFrameLog</c> appsettings section
 /// (see <see cref="Configure"/>). Disabled until <see cref="Configure"/> is called at startup.
+/// Also doubles as the live-frame broadcast seam: every <see cref="Append"/> call raises
+/// <see cref="FrameObserved"/> regardless of whether file logging is enabled, so a SignalR
+/// hub (or anything else) can subscribe for a real-time feed of frames.
 /// </summary>
 public static class OcppRawLog
 {
@@ -15,6 +18,11 @@ public static class OcppRawLog
 
     /// <summary>Resolved log file path, or null when disabled.</summary>
     public static string? FilePath => _path;
+
+    // ponytail: static event because Backend.OCPP has no DI seam reaching the transport;
+    // promote to an injected IOcppFrameObserver if a second consumer ever appears.
+    /// <summary>Raised for every frame, independent of file logging. Args: chargePointId, direction ("in"/"out"), frame.</summary>
+    public static event Action<string, string, string>? FrameObserved;
 
     /// <summary>
     /// Enable/disable raw frame logging. Call once at startup with values bound from
@@ -39,18 +47,25 @@ public static class OcppRawLog
     /// <summary>Append one direction-tagged frame. "in" = charger→CS, "out" = CS→charger.</summary>
     public static void Append(string chargePointId, string direction, string frame)
     {
-        if (_path is null)
+        if (_path is not null)
         {
-            return;
+            var line = $"{DateTime.UtcNow:O} [{chargePointId}] {direction} {frame}{Environment.NewLine}";
+            try
+            {
+                lock (_gate)
+                {
+                    File.AppendAllText(_path, line);
+                }
+            }
+            catch
+            {
+                // Diagnostics must never disrupt message processing.
+            }
         }
 
-        var line = $"{DateTime.UtcNow:O} [{chargePointId}] {direction} {frame}{Environment.NewLine}";
         try
         {
-            lock (_gate)
-            {
-                File.AppendAllText(_path, line);
-            }
+            FrameObserved?.Invoke(chargePointId, direction, frame);
         }
         catch
         {

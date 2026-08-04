@@ -1,3 +1,4 @@
+using System.Text.Json;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.OCPP.Services;
 using HASmartCharge.Backend.Services;
@@ -18,13 +19,15 @@ public class ChargerController : ControllerBase
     private readonly ChargerStatusTracker _statusTracker;
     private readonly IChargerControl _chargerControl;
     private readonly ChargeSessionRecorder _sessionRecorder;
+    private readonly ICommandSender _commandSender;
 
-    public ChargerController(ApplicationDbContext dbContext, ChargerStatusTracker statusTracker, IChargerControl chargerControl, ChargeSessionRecorder sessionRecorder)
+    public ChargerController(ApplicationDbContext dbContext, ChargerStatusTracker statusTracker, IChargerControl chargerControl, ChargeSessionRecorder sessionRecorder, ICommandSender commandSender)
     {
         _dbContext = dbContext;
         _statusTracker = statusTracker;
         _chargerControl = chargerControl;
         _sessionRecorder = sessionRecorder;
+        _commandSender = commandSender;
     }
 
     [HttpGet("status")]
@@ -165,7 +168,32 @@ public class ChargerController : ControllerBase
         return Ok(new { chargePointId = charger.ChargePointId, reconfigured = true });
     }
 
+    /// <summary>
+    /// Developer/diagnostic escape hatch: sends an arbitrary OCPP action (including Reset and
+    /// RemoteStopTransaction) straight to the charger, bypassing <see cref="IChargerControl"/>.
+    /// </summary>
+    [HttpPost("ocpp/call")]
+    public async Task<IActionResult> SendOcppCall([FromBody] OcppCallRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Action))
+        {
+            return BadRequest(new { error = "Action is required" });
+        }
+
+        var charger = await _dbContext.ChargerSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(charger?.ChargePointId))
+        {
+            return NotFound(new { error = "No charger configured" });
+        }
+
+        var payload = request.Payload ?? JsonDocument.Parse("{}").RootElement;
+        var result = await _commandSender.SendCommandAsync(charger.ChargePointId, request.Action, payload, ct);
+        return Ok(result);
+    }
+
     public record SetAvailabilityRequest(bool Available);
 
     public record SetPowerRequest(double Kw);
+
+    public record OcppCallRequest(string Action, JsonElement? Payload);
 }
