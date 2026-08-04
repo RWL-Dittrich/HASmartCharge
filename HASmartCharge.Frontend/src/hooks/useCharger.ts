@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getChargerStatus,
   reconfigureCharger,
+  sendOcppCall,
   setChargerAvailability,
   setChargerPower,
   unlockCharger,
@@ -42,5 +43,11 @@ export function useSetChargerPower() {
     mutationFn: (kw: number) => setChargerPower(kw),
     // Refetch charger settings so the persisted setpoint (slider seed) stays in sync.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.charger }),
+  })
+}
+
+export function useSendOcppCall() {
+  return useMutation({
+    mutationFn: ({ action, payload }: { action: string; payload: unknown }) => sendOcppCall(action, payload),
   })
 }

@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using HASmartCharge.Backend.OCPP.Infrastructure;
 using HASmartCharge.Backend.OCPP.Services;
 
 namespace HASmartCharge.Backend.OCPP.Transport;
@@ -12,17 +13,20 @@ public class WebSocketConnection : IConnection
     private readonly WebSocket _webSocket;
     private readonly WebSocketMessageService _messageService;
     private readonly string _remoteEndPoint;
+    private readonly string _chargePointId;
 
     public WebSocketConnection(
         WebSocket webSocket,
         string connectionId,
         string remoteEndPoint,
-        WebSocketMessageService messageService)
+        WebSocketMessageService messageService,
+        string chargePointId)
     {
         _webSocket = webSocket ?? throw new ArgumentNullException(nameof(webSocket));
         _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
         ConnectionId = connectionId ?? throw new ArgumentNullException(nameof(connectionId));
         _remoteEndPoint = remoteEndPoint ?? throw new ArgumentNullException(nameof(remoteEndPoint));
+        _chargePointId = chargePointId ?? throw new ArgumentNullException(nameof(chargePointId));
     }
 
     public string ConnectionId { get; }
@@ -39,6 +43,7 @@ public class WebSocketConnection : IConnection
         }
 
         await WebSocketMessageService.SendMessageAsync(_webSocket, message, cancellationToken);
+        OcppRawLog.Append(_chargePointId, "out", message);
     }
 
     public async Task CloseAsync(CancellationToken cancellationToken = default)
@@ -60,6 +65,12 @@ public class WebSocketConnection : IConnection
     /// </summary>
     public async Task<string?> ReceiveAsync(CancellationToken cancellationToken = default)
     {
-        return await WebSocketMessageService.ReceiveMessageAsync(_webSocket, cancellationToken);
+        var result = await WebSocketMessageService.ReceiveMessageAsync(_webSocket, cancellationToken);
+        if (result != null)
+        {
+            OcppRawLog.Append(_chargePointId, "in", result);
+        }
+
+        return result;
     }
 }

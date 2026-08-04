@@ -6,6 +6,7 @@ import { CarTab } from '@/pages/settings/CarTab'
 import { ChargerTab } from '@/pages/settings/ChargerTab'
 import { HomeAssistantTab } from '@/pages/settings/HomeAssistantTab'
 import { MqttTab } from '@/pages/settings/MqttTab'
+import { DeveloperTab } from '@/pages/settings/DeveloperTab'
 
 const TABS = [
   { id: 'price', label: 'Price Provider', Component: PriceProviderTab },
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'charger', label: 'Charger', Component: ChargerTab },
   { id: 'ha', label: 'Home Assistant', Component: HomeAssistantTab },
   { id: 'mqtt', label: 'MQTT', Component: MqttTab },
+  { id: 'dev', label: 'Developer', Component: DeveloperTab },
 ] as const
 
 export function SettingsPage() {
@@ -21,7 +23,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-auto">
-      <TopBar title="Settings" subtitle="Price provider, car, charger, Home Assistant, and MQTT configuration" />
+      <TopBar title="Settings" subtitle="Price provider, car, charger, Home Assistant, MQTT, and developer tools configuration" />
 
       <div className="flex-1 p-4 sm:p-6">
         <div className="flex gap-1 border-b border-[#2a3042] mb-6 overflow-x-auto">

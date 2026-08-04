@@ -63,7 +63,8 @@ public class OcppConnectionOrchestrator
             webSocket,
             connectionId,
             remoteEndPoint,
-            _messageService);
+            _messageService,
+            chargePointId);
 
         // Create session
         IChargePointSession session = new ChargePointSession(
@@ -177,15 +178,12 @@ public class OcppConnectionOrchestrator
                 break;
             }
 
-            OcppRawLog.Append(chargePointId, "in", rawMessage);
-
             // Route message and get response
             var response = await _messageRouter.RouteAsync(connection, rawMessage, cancellationToken);
 
             // Send response if needed
             if (!string.IsNullOrEmpty(response))
             {
-                OcppRawLog.Append(chargePointId, "out", response);
                 await connection.SendAsync(response, cancellationToken);
             }
         }

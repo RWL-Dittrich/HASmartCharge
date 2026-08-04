@@ -1,5 +1,5 @@
 import { apiFetch } from '@/api/client'
-import type { ChargerStatus, CommandResult } from '@/types/charger'
+import type { ChargerStatus, CommandResult, OcppCallResult } from '@/types/charger'
 
 export function getChargerStatus(): Promise<ChargerStatus> {
   return apiFetch<ChargerStatus>('/api/charger/status')
@@ -30,5 +30,13 @@ export function setChargerPower(kw: number): Promise<SetPowerResult> {
   return apiFetch<SetPowerResult>('/api/charger/power', {
     method: 'POST',
     body: JSON.stringify({ kw }),
+  })
+}
+
+/** Sends an arbitrary OCPP 1.6 call straight to the charger (developer tooling; bypasses IChargerControl). */
+export function sendOcppCall(action: string, payload: unknown): Promise<OcppCallResult> {
+  return apiFetch<OcppCallResult>('/api/charger/ocpp/call', {
+    method: 'POST',
+    body: JSON.stringify({ action, payload }),
   })
 }
