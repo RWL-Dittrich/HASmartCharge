@@ -26,13 +26,16 @@ const TABS = [
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]['id']>('price')
   const ActiveComponent = TABS.find((t) => t.id === activeTab)?.Component ?? PriceProviderTab
+  // The developer tab lays itself out to the viewport (side-by-side columns that scroll
+  // internally); every other tab is a form that wants normal page scroll.
+  const fill = activeTab === 'dev'
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className={cn('flex flex-col h-full overflow-auto', fill && 'lg:overflow-hidden')}>
       <TopBar title="Settings" subtitle="Price provider, car, charger, Home Assistant, MQTT, and developer tools configuration" />
 
-      <div className="flex-1 p-4 sm:p-6">
-        <div className="flex gap-1 border-b border-[#2a3042] mb-6 overflow-x-auto">
+      <div className={cn('flex-1 p-4 sm:p-6', fill && 'flex flex-col lg:min-h-0')}>
+        <div className="flex shrink-0 gap-1 border-b border-[#2a3042] mb-6 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -49,7 +52,15 @@ export function SettingsPage() {
           ))}
         </div>
 
-        <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 sm:p-5">
+        {/* Form tabs are bare fields, so this wrapper is their card. The developer tab brings its
+            own panels — wrapping those in another card is a card in a card. */}
+        <div
+          className={cn(
+            fill
+              ? 'flex-1 lg:min-h-0 lg:overflow-hidden'
+              : 'rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 sm:p-5',
+          )}
+        >
           <Suspense
             fallback={
               <div className="flex items-center gap-2 py-6 text-sm text-[#8892a4]">
