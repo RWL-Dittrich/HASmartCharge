@@ -82,10 +82,19 @@ public class ChargeOrchestratorService : BackgroundService
         var chargeControl = services.GetRequiredService<IChargeControlService>();
         var statusTracker = services.GetRequiredService<ChargerStatusTracker>();
 
+        var car = await dbContext.CarSettings.AsNoTracking().FirstAsync(ct);
+        var charger = await dbContext.ChargerSettings.AsNoTracking().FirstAsync(ct);
+
+        // Resolve the at-home latch once per tick: everything below (auto-arm + control) reads it.
+        var atHome = await ResolveAtHomeAsync(statusTracker, haControl, charger, car, ct);
+
         // Auto-schedule: drop past overrides, then create a plan on the plug-in rising edge
         // before we look for an active one.
         await services.GetRequiredService<IAutoScheduleResolver>().SweepPastOverridesAsync(DateTime.UtcNow, ct);
-        await TryAutoArmAsync(services, dbContext, statusTracker, haControl, ct);
+        if (atHome.RisingEdge)
+        {
+            await TryAutoArmAsync(services, dbContext, ct);
+        }
 
         var plan = await dbContext.ChargePlans
             .Where(p => _relevantStatuses.Contains(p.Status))
@@ -112,8 +121,15 @@ public class ChargeOrchestratorService : BackgroundService
             return;
         }
 
-        var car = await dbContext.CarSettings.AsNoTracking().FirstAsync(ct);
-        var charger = await dbContext.ChargerSettings.AsNoTracking().FirstAsync(ct);
+        // Only ever touch the car while it's on our charger. Without this the plan keeps running
+        // after the car leaves and we'd start/stop it at whatever public charger it's plugged into.
+        if (!atHome.IsAtHome)
+        {
+            _logger.LogInformation(
+                "Charge orchestrator tick: plan {PlanId} but car is not plugged into charger {ChargePointId}; skipping automatic control.",
+                plan.Id, charger.ChargePointId);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(car.HaSocEntityId))
         {
@@ -190,28 +206,17 @@ public class ChargeOrchestratorService : BackgroundService
     }
 
     /// <summary>
-    /// When auto-scheduling is enabled, detects the plug-in rising edge, retires any plan whose
-    /// deadline has already passed, and — if no plan for an upcoming departure is still in flight —
-    /// creates one for the next departure resolved from the weekly pattern + overrides.
+    /// Called on the at-home plug-in rising edge when auto-scheduling is enabled: retires any plan
+    /// whose deadline has already passed, and — if no plan for an upcoming departure is still in
+    /// flight — creates one for the next departure resolved from the weekly pattern + overrides.
     /// </summary>
     private async Task TryAutoArmAsync(
         IServiceProvider services,
         ApplicationDbContext dbContext,
-        ChargerStatusTracker statusTracker,
-        IHomeAssistantControl haControl,
         CancellationToken ct)
     {
         var auto = await dbContext.AutoScheduleSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         if (auto is null || !auto.Enabled)
-        {
-            return;
-        }
-
-        var charger = await dbContext.ChargerSettings.AsNoTracking().FirstAsync(ct);
-        var car = await dbContext.CarSettings.AsNoTracking().FirstAsync(ct);
-
-        var pluggedNow = await IsPluggedInAsync(statusTracker, haControl, charger, car, ct);
-        if (!_plugState.RegisterAndDetectRisingEdge(pluggedNow))
         {
             return;
         }
@@ -261,28 +266,59 @@ public class ChargeOrchestratorService : BackgroundService
     }
 
     /// <summary>
-    /// Is the car plugged in? Primary signal is the OCPP connector status; if a HA plugged-in
-    /// binary_sensor is configured, it's OR'd in.
+    /// Resolves whether this charge is an at-home charge, feeding the latch in
+    /// <see cref="PlugStateTracker"/>.
+    /// <para>
+    /// Confirmation (both signals at once) requires the home charger to be online — a stale
+    /// connector status from a disconnected charger proves nothing — reporting a cable inserted,
+    /// AND, when configured, the car-side HA plugged sensor agreeing. That sensor can't tell which
+    /// charger the cable is in, so it is never OR'd: at a public charger it would alone read
+    /// "plugged" and we'd start/stop the car remotely.
+    /// </para>
+    /// Detachment must be positive, not merely unknown: the charger is online and its connector
+    /// reports no cable, or the HA sensor says the car is unplugged. A charger that dropped its
+    /// WebSocket mid-charge is ambiguous, so the latch holds and we keep control.
     /// </summary>
-    private static async Task<bool> IsPluggedInAsync(
-        ChargerStatusTracker statusTracker, IHomeAssistantControl haControl, ChargerSettings charger, CarSettings car, CancellationToken ct)
+    private async Task<(bool IsAtHome, bool RisingEdge)> ResolveAtHomeAsync(
+        ChargerStatusTracker statusTracker,
+        IHomeAssistantControl haControl,
+        ChargerSettings charger,
+        CarSettings car,
+        CancellationToken ct)
     {
-        var connector = statusTracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId);
-        if (connector?.Status is { } status && _pluggedInStatuses.Contains(status))
+        var chargerOnline = statusTracker.GetChargerStatus(charger.ChargePointId)?.IsConnected == true;
+        var connectorPlugged = statusTracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId)?.Status is { } status
+            && _pluggedInStatuses.Contains(status);
+
+        var carPlugged = string.IsNullOrWhiteSpace(car.HaPluggedInEntityId)
+            ? null
+            : await IsCarPluggedAsync(haControl, car.HaPluggedInEntityId, ct);
+
+        var confirmed = chargerOnline && connectorPlugged && carPlugged != false;
+        var detached = (chargerOnline && !connectorPlugged) || carPlugged == false;
+
+        var rising = _plugState.RegisterAndDetectRisingEdge(confirmed, detached);
+        var isAtHome = _plugState.IsAtHome;
+
+        _logger.LogDebug(
+            "Plug state: chargerOnline={ChargerOnline}, connectorPlugged={ConnectorPlugged}, carPlugged={CarPlugged}, confirmed={Confirmed}, detached={Detached}, atHome={AtHome}.",
+            chargerOnline, connectorPlugged, carPlugged, confirmed, detached, isAtHome);
+
+        return (isAtHome, rising);
+    }
+
+    private static async Task<bool?> IsCarPluggedAsync(IHomeAssistantControl haControl, string entityId, CancellationToken ct)
+    {
+        var haState = await haControl.GetStateAsync(entityId, ct);
+        if (haState is null || haState.Equals("unavailable", StringComparison.OrdinalIgnoreCase)
+            || haState.Equals("unknown", StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return null; // unreachable/unknown entity is ambiguous, not a detach.
         }
 
-        if (string.IsNullOrWhiteSpace(car.HaPluggedInEntityId))
-        {
-            return false;
-        }
-
-        var haState = await haControl.GetStateAsync(car.HaPluggedInEntityId, ct);
-        return haState is not null && (
-            haState.Equals("on", StringComparison.OrdinalIgnoreCase) ||
-            haState.Equals("plugged", StringComparison.OrdinalIgnoreCase) ||
-            haState.Equals("connected", StringComparison.OrdinalIgnoreCase));
+        return haState.Equals("on", StringComparison.OrdinalIgnoreCase)
+            || haState.Equals("plugged", StringComparison.OrdinalIgnoreCase)
+            || haState.Equals("connected", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

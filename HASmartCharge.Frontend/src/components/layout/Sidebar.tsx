@@ -80,17 +80,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </NavLink>
           ))}
         </nav>
-
-        {/* User footer */}
-        <div className="flex items-center gap-3 border-t border-[#2a3042] px-4 py-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
-            A
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium text-white">Admin</div>
-            <div className="truncate text-xs text-[#8892a4]">Network Admin</div>
-          </div>
-        </div>
       </aside>
     </>
   )
