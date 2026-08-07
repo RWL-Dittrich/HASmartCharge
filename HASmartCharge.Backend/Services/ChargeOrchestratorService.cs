@@ -113,24 +113,6 @@ public class ChargeOrchestratorService : BackgroundService
             await dbContext.SaveChangesAsync(ct);
         }
 
-        if (_overrideState.IsActive)
-        {
-            _logger.LogInformation(
-                "Charge orchestrator tick: manual override active until {OverrideUntilUtc:o}, skipping automatic control.",
-                _overrideState.OverrideUntilUtc);
-            return;
-        }
-
-        // Only ever touch the car while it's on our charger. Without this the plan keeps running
-        // after the car leaves and we'd start/stop it at whatever public charger it's plugged into.
-        if (!atHome.IsAtHome)
-        {
-            _logger.LogInformation(
-                "Charge orchestrator tick: plan {PlanId} but car is not plugged into charger {ChargePointId}; skipping automatic control.",
-                plan.Id, charger.ChargePointId);
-            return;
-        }
-
         if (string.IsNullOrWhiteSpace(car.HaSocEntityId))
         {
             _logger.LogWarning("Charge orchestrator tick: no car SoC entity configured, skipping tick.");
@@ -141,6 +123,48 @@ public class ChargeOrchestratorService : BackgroundService
         if (soc is null)
         {
             _logger.LogWarning("Charge orchestrator tick: battery SoC unavailable, skipping tick.");
+            return;
+        }
+
+        // Recompute and persist the schedule BEFORE the control guards below: a manual override or
+        // a car that's away only suspends start/stop, it doesn't freeze the plan. Skipping this is
+        // what left the dashboard showing hours that had already passed.
+        var now = DateTime.UtcNow;
+        var calc = await scheduleService.ComputeAsync(plan.DeadlineUtc, plan.TargetSocPercent, soc.Value, ct);
+
+        plan.SelectedHoursJson = JsonSerializer.Serialize(calc.Schedule.SelectedHourStartsUtc);
+        plan.EstimatedCost = calc.Schedule.EstimatedCost;
+        plan.EstimatedEnergyKwh = calc.Schedule.EnergyNeededKwh;
+
+        if (now > plan.DeadlineUtc && soc.Value < plan.TargetSocPercent)
+        {
+            if (plan.Status != ChargePlanStatus.MissedDeadline)
+            {
+                _logger.LogWarning(
+                    "Charge plan {PlanId} missed its deadline {DeadlineUtc:o} at {Soc}% (target {Target}%); continuing to charge toward target.",
+                    plan.Id, plan.DeadlineUtc, soc, plan.TargetSocPercent);
+            }
+
+            plan.Status = ChargePlanStatus.MissedDeadline;
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+
+        if (_overrideState.IsActive)
+        {
+            _logger.LogInformation(
+                "Charge orchestrator tick: manual override active until {OverrideUntilUtc:o}, schedule refreshed but skipping automatic control.",
+                _overrideState.OverrideUntilUtc);
+            return;
+        }
+
+        // Only ever touch the car while it's on our charger. Without this the plan keeps running
+        // after the car leaves and we'd start/stop it at whatever public charger it's plugged into.
+        if (!atHome.IsAtHome)
+        {
+            _logger.LogInformation(
+                "Charge orchestrator tick: plan {PlanId} but car is not plugged into charger {ChargePointId}; schedule refreshed but skipping automatic control.",
+                plan.Id, charger.ChargePointId);
             return;
         }
 
@@ -163,13 +187,6 @@ public class ChargeOrchestratorService : BackgroundService
             return;
         }
 
-        var now = DateTime.UtcNow;
-        var calc = await scheduleService.ComputeAsync(plan.DeadlineUtc, plan.TargetSocPercent, soc.Value, ct);
-
-        plan.SelectedHoursJson = JsonSerializer.Serialize(calc.Schedule.SelectedHourStartsUtc);
-        plan.EstimatedCost = calc.Schedule.EstimatedCost;
-        plan.EstimatedEnergyKwh = calc.Schedule.EnergyNeededKwh;
-
         var nowHour = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc);
         var shouldCharge = calc.Schedule.SelectedHourStartsUtc.Contains(nowHour);
         var acted = false;
@@ -182,20 +199,6 @@ public class ChargeOrchestratorService : BackgroundService
         {
             acted = await TryStopChargingAsync(chargeControl, plan.Id, ct);
         }
-
-        if (now > plan.DeadlineUtc && soc.Value < plan.TargetSocPercent)
-        {
-            if (plan.Status != ChargePlanStatus.MissedDeadline)
-            {
-                _logger.LogWarning(
-                    "Charge plan {PlanId} missed its deadline {DeadlineUtc:o} at {Soc}% (target {Target}%); continuing to charge toward target.",
-                    plan.Id, plan.DeadlineUtc, soc, plan.TargetSocPercent);
-            }
-
-            plan.Status = ChargePlanStatus.MissedDeadline;
-        }
-
-        await dbContext.SaveChangesAsync(ct);
 
         if (!acted)
         {

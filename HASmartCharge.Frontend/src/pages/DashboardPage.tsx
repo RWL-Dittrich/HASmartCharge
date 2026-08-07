@@ -11,7 +11,16 @@ import { useHaStatus } from '@/hooks/useHa'
 import { useChargerSettings, usePriceSettings } from '@/hooks/useSettings'
 import { useStartCharge, useStopCharge } from '@/hooks/useCharge'
 import { usePlanPreview } from '@/hooks/usePlan'
-import { formatDateTime, formatKw, formatKwh, formatMoney } from '@/lib/utils'
+import {
+  ensureUtcSuffix,
+  formatDateTime,
+  formatDuration,
+  formatHourLabel,
+  formatKw,
+  formatKwh,
+  formatMoney,
+  formatPricePerKwh,
+} from '@/lib/utils'
 import { ApiError } from '@/api/client'
 import type { ChargePlanStatus } from '@/types/plan'
 
@@ -46,6 +55,21 @@ export function DashboardPage() {
   useEffect(() => {
     if (chargerSettings && powerKw === null) setPowerKw(chargerSettings.chargePowerSetpointKw)
   }, [chargerSettings, powerKw])
+
+  // Average €/kWh the plan is expected to pay — cost already includes the (cheapest-first)
+  // hour selection, so this is just cost ÷ energy rather than a mean of the hourly prices.
+  const avgPricePerKwh =
+    plan && plan.estimatedEnergyKwh > 0 ? plan.estimatedCost / plan.estimatedEnergyKwh : null
+
+  // Recomputed each render (cheap) so the "current hour" chip follows the clock as queries refetch.
+  const currentHourStartMs = new Date().setUTCMinutes(0, 0, 0)
+
+  const priceByHour = useMemo(
+    () => new Map((prices ?? []).map((p) => [ensureUtcSuffix(p.hourStartUtc), p.pricePerKwh])),
+    [prices],
+  )
+
+  const deadlineIn = plan ? formatDuration(new Date().toISOString(), plan.deadlineUtc) : null
 
   async function handleSetPower(kw: number) {
     setActionError(null)
@@ -248,43 +272,115 @@ export function DashboardPage() {
           </div>
 
           {/* Active plan card */}
-          <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 space-y-3 lg:col-span-2">
-            <div className="flex items-center justify-between">
+          <div className="rounded-lg bg-[#1a1f2e] border border-[#2a3042] p-4 lg:col-span-2 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-white">Active Charge Plan</h2>
-              {plan && <Badge tone={PLAN_STATUS_TONE[plan.status]}>{plan.status}</Badge>}
+              <div className="flex items-center gap-2">
+                {plan && (
+                  <span className="text-xs text-[#8892a4]">
+                    {formatDateTime(plan.deadlineUtc)}
+                    {deadlineIn && ` · in ${deadlineIn}`}
+                  </span>
+                )}
+                {plan && <Badge tone={PLAN_STATUS_TONE[plan.status]}>{plan.status}</Badge>}
+              </div>
             </div>
 
             {!plan ? (
-              <div className="flex flex-col items-center justify-center py-8 text-[#8892a4]">
+              <div className="flex flex-1 flex-col items-center justify-center py-6 text-[#8892a4]">
                 <BatteryCharging className="h-8 w-8 mb-2 opacity-40" />
                 <span className="text-sm">No active plan. Create one from the Schedule page.</span>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <div>
-                  <div className="text-xs text-[#8892a4] uppercase tracking-wide">Target</div>
-                  <div className="text-white font-medium">{plan.targetSocPercent}%</div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#8892a4] uppercase tracking-wide">Deadline</div>
-                  <div className="text-white font-medium">{formatDateTime(plan.deadlineUtc)}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-[#8892a4] uppercase tracking-wide">Estimated Cost</div>
-                  <div className="text-white font-medium">
-                    {formatMoney(plan.estimatedCost, priceSettings?.currency)}
+              <>
+                {/* SoC now → target */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-[#8892a4]">
+                    <span>
+                      Now{' '}
+                      <span className="text-white font-medium">
+                        {socPreview?.socPercent != null ? `${Math.round(socPreview.socPercent)}%` : '—'}
+                      </span>
+                    </span>
+                    <span>
+                      Target <span className="text-white font-medium">{plan.targetSocPercent}%</span>
+                    </span>
+                  </div>
+                  <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-[#232938]">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      style={{ width: `${Math.min(100, Math.max(0, socPreview?.socPercent ?? 0))}%` }}
+                    />
+                    <div
+                      className="absolute top-0 h-full w-px bg-white/60"
+                      style={{ left: `${Math.min(100, Math.max(0, plan.targetSocPercent))}%` }}
+                    />
                   </div>
                 </div>
-                <div>
-                  <div className="text-xs text-[#8892a4] uppercase tracking-wide">Energy Needed</div>
-                  <div className="text-white font-medium">{formatKwh(plan.estimatedEnergyKwh)}</div>
+
+                {/* Compact stat strip */}
+                <div className="grid grid-cols-3 divide-x divide-[#2a3042] rounded-md bg-[#151a26] text-center">
+                  <div className="px-2 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[#8892a4]">Energy</div>
+                    <div className="text-sm font-medium text-white">{formatKwh(plan.estimatedEnergyKwh)}</div>
+                  </div>
+                  <div className="px-2 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[#8892a4]">Est. cost</div>
+                    <div className="text-sm font-medium text-white">
+                      {formatMoney(plan.estimatedCost, priceSettings?.currency)}
+                    </div>
+                  </div>
+                  <div className="px-2 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-[#8892a4]">Avg price</div>
+                    <div className="text-sm font-medium text-white">
+                      {avgPricePerKwh != null
+                        ? formatPricePerKwh(avgPricePerKwh, priceSettings?.currency)
+                        : '—'}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Selected charge hours */}
+                <div className="flex-1 space-y-1.5">
+                  <div className="text-[10px] uppercase tracking-wide text-[#8892a4]">
+                    Charge hours ({plan.selectedHours.length})
+                  </div>
+                  {plan.selectedHours.length === 0 ? (
+                    <span className="text-xs text-[#8892a4]">No hours selected — nothing left to charge.</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {plan.selectedHours.map((hour) => {
+                        const hourUtc = ensureUtcSuffix(hour)
+                        const past = new Date(hourUtc).getTime() < currentHourStartMs
+                        const current = new Date(hourUtc).getTime() === currentHourStartMs
+                        const price = priceByHour.get(hourUtc)
+                        return (
+                          <span
+                            key={hour}
+                            title={price != null ? formatPricePerKwh(price, priceSettings?.currency) : undefined}
+                            className={
+                              'rounded px-1.5 py-0.5 text-xs tabular-nums border ' +
+                              (current
+                                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                                : past
+                                  ? 'border-[#2a3042] bg-[#151a26] text-[#5c6479] line-through'
+                                  : 'border-[#2a3042] bg-[#232938] text-white')
+                            }
+                          >
+                            {formatHourLabel(hour)}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {plan.status === 'MissedDeadline' && (
-                  <div className="col-span-2 flex items-center gap-1.5 text-amber-400 sm:col-span-4">
+                  <div className="flex items-center gap-1.5 text-xs text-amber-400">
                     <AlertTriangle className="h-3.5 w-3.5" /> This plan missed its deadline.
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
