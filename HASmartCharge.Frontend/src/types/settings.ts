@@ -50,6 +50,11 @@ export interface MqttSettings {
   discoveryPrefix: string
 }
 
+export type ChargePowerControlMode = 'ChargingProfile' | 'Configuration'
+
+export const CHARGE_POWER_UNITS = ['A', 'mA', 'W', 'kW'] as const
+export type ChargePowerUnit = (typeof CHARGE_POWER_UNITS)[number]
+
 export interface ChargerSettings {
   id: number
   chargePointId: string
@@ -60,6 +65,12 @@ export interface ChargerSettings {
   chargePowerMaxKw: number
   /** Last power ceiling applied via OCPP; written by POST /api/charger/power, not the settings PUT. */
   chargePowerSetpointKw: number
+  /** How the slider reaches the charger: SetChargingProfile, or ChangeConfiguration on a vendor key. */
+  chargePowerControlMode: ChargePowerControlMode
+  /** Configuration key written in Configuration mode, e.g. USER_PMAX. */
+  chargePowerConfigurationKey: string
+  /** Unit that key expects; the kW setpoint is converted to it. */
+  chargePowerConfigurationUnit: ChargePowerUnit
   /** Per-phase supply voltage + phase count: used server-side to convert the kW setpoint to amps. */
   supplyVoltage: number
   phaseCount: number

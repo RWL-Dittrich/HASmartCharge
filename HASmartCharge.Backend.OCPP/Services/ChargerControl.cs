@@ -21,6 +21,12 @@ public interface IChargerControl
     /// </summary>
     Task<OcppCommandResult> SetChargingCurrentLimitAsync(string chargePointId, int connectorId, double amps, int numberPhases, CancellationToken ct = default);
 
+    /// <summary>
+    /// Writes a single configuration key (ChangeConfiguration). Used by chargers that cap power
+    /// through a vendor key (e.g. USER_PMAX) instead of a charging profile.
+    /// </summary>
+    Task<OcppCommandResult> SetConfigurationKeyAsync(string chargePointId, string key, string value, CancellationToken ct = default);
+
     Task ReconfigureAsync(string chargePointId, CancellationToken ct = default);
 }
 
@@ -46,6 +52,10 @@ public sealed class ChargerControl : IChargerControl
     public Task<OcppCommandResult> SetChargingCurrentLimitAsync(string chargePointId, int connectorId, double amps, int numberPhases, CancellationToken ct = default) =>
         _commandSender.SendCommandAsync(chargePointId, "SetChargingProfile",
             SetChargingProfileRequest.ForFlatCurrentLimit(connectorId, amps, numberPhases), ct);
+
+    public Task<OcppCommandResult> SetConfigurationKeyAsync(string chargePointId, string key, string value, CancellationToken ct = default) =>
+        _commandSender.SendCommandAsync(chargePointId, "ChangeConfiguration",
+            new ChangeConfigurationRequest { Key = key, Value = value }, ct);
 
     public Task ReconfigureAsync(string chargePointId, CancellationToken ct = default) =>
         _configurationService.ConfigureChargerAsync(chargePointId, ct);

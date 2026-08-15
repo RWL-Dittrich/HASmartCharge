@@ -3,7 +3,8 @@ import { Loader2 } from 'lucide-react'
 import { useChargerSettings, useUpdateChargerSettings } from '@/hooks/useSettings'
 import { useReconfigureCharger, useSetChargerAvailability, useUnlockCharger } from '@/hooks/useCharger'
 import { NumberInput } from '@/components/ui/NumberInput'
-import type { ChargerSettings } from '@/types/settings'
+import { CHARGE_POWER_UNITS } from '@/types/settings'
+import type { ChargePowerControlMode, ChargePowerUnit, ChargerSettings } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
 function ResultBanner({ label, error }: { label: string; error?: string | null }) {
@@ -147,10 +148,64 @@ export function ChargerTab() {
         </label>
       </div>
       <p className="text-xs text-[#8892a4]">
-        Bounds for the charge-power slider on the dashboard. The slider works in kW; the backend
-        converts to amps (A = W ÷ (phases × voltage)) and sends an OCPP SetChargingProfile in amps to
-        cap delivered current. The charger must support smart charging.
+        Bounds for the charge-power slider on the dashboard. The slider always works in kW; how that
+        setpoint reaches the charger is chosen below.
       </p>
+
+      <div className="border-t border-[#2a3042] pt-4 space-y-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">
+          Power control method
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <label className="text-sm sm:col-span-3">
+            <span className="text-[#8892a4] block mb-1">Method</span>
+            <select
+              value={form.chargePowerControlMode}
+              onChange={(e) =>
+                setForm({ ...form, chargePowerControlMode: e.target.value as ChargePowerControlMode })
+              }
+              className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+            >
+              <option value="ChargingProfile">SetChargingProfile (smart charging)</option>
+              <option value="Configuration">ChangeConfiguration (vendor key, e.g. USER_PMAX)</option>
+            </select>
+          </label>
+          {form.chargePowerControlMode === 'Configuration' && (
+            <>
+              <label className="text-sm sm:col-span-2">
+                <span className="text-[#8892a4] block mb-1">Configuration key</span>
+                <input
+                  value={form.chargePowerConfigurationKey}
+                  onChange={(e) => setForm({ ...form, chargePowerConfigurationKey: e.target.value })}
+                  placeholder="USER_PMAX"
+                  className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 font-mono text-sm text-white outline-none focus:border-blue-500"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="text-[#8892a4] block mb-1">Unit</span>
+                <select
+                  value={form.chargePowerConfigurationUnit}
+                  onChange={(e) =>
+                    setForm({ ...form, chargePowerConfigurationUnit: e.target.value as ChargePowerUnit })
+                  }
+                  className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+                >
+                  {CHARGE_POWER_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-[#8892a4]">
+          {form.chargePowerControlMode === 'Configuration'
+            ? 'The slider value is converted to the selected unit (A and mA use A = W ÷ (phases × voltage)), rounded down, and written to the key with ChangeConfiguration.'
+            : 'The backend converts kW to amps (A = W ÷ (phases × voltage)) and sends an OCPP SetChargingProfile to cap delivered current. The charger must support smart charging.'}
+        </p>
+      </div>
 
       <div className="border-t border-[#2a3042] pt-4 space-y-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">

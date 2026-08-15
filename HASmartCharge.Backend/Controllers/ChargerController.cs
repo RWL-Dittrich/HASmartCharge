@@ -1,6 +1,9 @@
 using System.Text.Json;
 using HASmartCharge.Backend.DB;
+using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Core.Charging;
 using HASmartCharge.Backend.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -132,8 +135,34 @@ public class ChargerController : ControllerBase
 
         var amps = Math.Round(kw * 1000.0 / denominator, 1, MidpointRounding.ToZero);
 
-        var result = await _chargerControl.SetChargingCurrentLimitAsync(
-            charger.ChargePointId, charger.ConnectorId, amps, charger.PhaseCount, ct);
+        var viaConfiguration = string.Equals(charger.ChargePowerControlMode,
+            ChargePowerControlModes.Configuration, StringComparison.OrdinalIgnoreCase);
+
+        OcppCommandResult result;
+        string? sentValue = null;
+
+        if (viaConfiguration)
+        {
+            if (string.IsNullOrWhiteSpace(charger.ChargePowerConfigurationKey))
+            {
+                return StatusCode(StatusCodes.Status422UnprocessableEntity,
+                    new { error = "Charge power control mode is Configuration but no configuration key is set" });
+            }
+
+            if (!ChargePowerUnits.TryFormat(charger.ChargePowerConfigurationUnit, kw, amps, out sentValue))
+            {
+                return StatusCode(StatusCodes.Status422UnprocessableEntity,
+                    new { error = $"Unsupported charge power configuration unit '{charger.ChargePowerConfigurationUnit}' (expected A, mA, W or kW)" });
+            }
+
+            result = await _chargerControl.SetConfigurationKeyAsync(
+                charger.ChargePointId, charger.ChargePowerConfigurationKey, sentValue, ct);
+        }
+        else
+        {
+            result = await _chargerControl.SetChargingCurrentLimitAsync(
+                charger.ChargePointId, charger.ConnectorId, amps, charger.PhaseCount, ct);
+        }
 
         if (!result.Success)
         {
@@ -141,18 +170,31 @@ public class ChargerController : ControllerBase
                 new { error = result.ErrorDescription ?? result.ErrorCode ?? "Charger did not accept the command" });
         }
 
-        // SetChargingProfile.conf may still say Rejected/NotSupported even on a successful call.
+        // The .conf may still say Rejected/NotSupported even on a successful call.
+        // ChangeConfiguration additionally has RebootRequired — the value did land, so accept it.
         var status = OcppValueHelpers.ReadStatus(result.RawPayload);
-        if (!string.Equals(status, "Accepted", StringComparison.OrdinalIgnoreCase))
+        var accepted = string.Equals(status, "Accepted", StringComparison.OrdinalIgnoreCase)
+            || (viaConfiguration && string.Equals(status, "RebootRequired", StringComparison.OrdinalIgnoreCase));
+        if (!accepted)
         {
+            var what = viaConfiguration ? $"configuration key {charger.ChargePowerConfigurationKey}" : "charging profile";
             return StatusCode(StatusCodes.Status422UnprocessableEntity,
-                new { error = $"Charger rejected the charging profile (status: {status ?? "unknown"})", status });
+                new { error = $"Charger rejected the {what} (status: {status ?? "unknown"})", status });
         }
 
         charger.ChargePowerSetpointKw = kw;
         await _dbContext.SaveChangesAsync(ct);
 
-        return Ok(new { chargePointId = charger.ChargePointId, setpointKw = kw, amps, status });
+        return Ok(new
+        {
+            chargePointId = charger.ChargePointId,
+            setpointKw = kw,
+            amps,
+            status,
+            mode = viaConfiguration ? ChargePowerControlModes.Configuration : ChargePowerControlModes.ChargingProfile,
+            configurationKey = viaConfiguration ? charger.ChargePowerConfigurationKey : null,
+            configurationValue = sentValue
+        });
     }
 
     [HttpPost("reconfigure")]

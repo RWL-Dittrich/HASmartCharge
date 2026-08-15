@@ -31,6 +31,18 @@ public class ChargerSettings
     /// </summary>
     public double ChargePowerSetpointKw { get; set; } = 11;
 
+    /// <summary>
+    /// How the power setpoint reaches the charger: <c>ChargingProfile</c> (SetChargingProfile, default)
+    /// or <c>Configuration</c> (ChangeConfiguration on <see cref="ChargePowerConfigurationKey"/>, e.g. USER_PMAX).
+    /// </summary>
+    public string ChargePowerControlMode { get; set; } = ChargePowerControlModes.ChargingProfile;
+
+    /// <summary>Configuration key written in <c>Configuration</c> mode (e.g. "USER_PMAX").</summary>
+    public string ChargePowerConfigurationKey { get; set; } = string.Empty;
+
+    /// <summary>Unit the configuration key expects: A, mA, W or kW. The kW setpoint is converted to it.</summary>
+    public string ChargePowerConfigurationUnit { get; set; } = "A";
+
     /// <summary>Nominal per-phase supply voltage (V). Used to convert the kW setpoint to amps for the OCPP profile.</summary>
     public double SupplyVoltage { get; set; } = 230;
 
@@ -50,4 +62,10 @@ public class ChargerSettings
     /// <summary>CSV of OCPP measurands for MeterValuesSampledData / MeterValuesAlignedData.</summary>
     public string MeterValuesSampledData { get; set; } =
         "Power.Active.Import,Energy.Active.Import.Register,Current.Import,Voltage,Current.Offered,Power.Offered,SoC,Voltage.L1,Voltage.L2,Voltage.L3";
+}
+
+public static class ChargePowerControlModes
+{
+    public const string ChargingProfile = "ChargingProfile";
+    public const string Configuration = "Configuration";
 }

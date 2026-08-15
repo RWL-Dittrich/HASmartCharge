@@ -134,6 +134,9 @@ public class SettingsController : ControllerBase
         settings.ChargePowerMaxKw = update.ChargePowerMaxKw;
         settings.SupplyVoltage = update.SupplyVoltage;
         settings.PhaseCount = update.PhaseCount;
+        settings.ChargePowerControlMode = update.ChargePowerControlMode;
+        settings.ChargePowerConfigurationKey = update.ChargePowerConfigurationKey;
+        settings.ChargePowerConfigurationUnit = update.ChargePowerConfigurationUnit;
         settings.HeartbeatInterval = update.HeartbeatInterval;
         settings.MeterValueSampleInterval = update.MeterValueSampleInterval;
         settings.ClockAlignedDataInterval = update.ClockAlignedDataInterval;
