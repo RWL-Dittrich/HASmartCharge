@@ -24,9 +24,10 @@ public class HomeAssistantControl : IHomeAssistantControl
         _logger = logger;
     }
 
-    public async Task<double?> GetBatterySocAsync(string entityId, CancellationToken ct = default)
+    public async Task<double?> GetBatterySocAsync(string entityId, TimeSpan? maxAge = null, CancellationToken ct = default)
     {
-        var state = await GetStateAsync(entityId, ct);
+        var reading = await GetEntityStateAsync(entityId, ct);
+        var state = reading?.State;
         if (state == null)
         {
             return null;
@@ -38,16 +39,63 @@ public class HomeAssistantControl : IHomeAssistantControl
             return null;
         }
 
-        if (double.TryParse(state, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
+        if (!double.TryParse(state, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
         {
-            return value;
+            _logger.LogWarning("Could not parse state '{State}' for entity {EntityId} as a battery SoC value", state, entityId);
+            return null;
         }
 
-        _logger.LogWarning("Could not parse state '{State}' for entity {EntityId} as a battery SoC value", state, entityId);
+        // Callers that measure something against the SoC (efficiency calibration) can't use a
+        // reading the car reported long ago — while charging, the real SoC has moved on since.
+        // No timestamp at all means an HA that doesn't report one: accept rather than lose the
+        // reading entirely.
+        if (maxAge is { } age && reading!.Value.ReportedAt is { } reportedAt)
+        {
+            var staleness = DateTimeOffset.UtcNow - reportedAt;
+            if (staleness > age)
+            {
+                _logger.LogInformation(
+                    "Ignoring SoC for {EntityId}: last reported {StalenessMinutes:F1} min ago, older than the {MaxAgeMinutes:F0} min limit.",
+                    entityId, staleness.TotalMinutes, age.TotalMinutes);
+                return null;
+            }
+        }
+
+        return value;
+    }
+
+    public async Task<string?> GetStateAsync(string entityId, CancellationToken ct = default) =>
+        (await GetEntityStateAsync(entityId, ct))?.State;
+
+    /// <summary>One entity's state plus when the integration last reported it.</summary>
+    private readonly record struct EntityStateReading(string? State, DateTimeOffset? ReportedAt);
+
+    /// <summary>
+    /// When Home Assistant last *reported* this state, which is not when it last changed: HA only
+    /// bumps <c>last_changed</c>/<c>last_updated</c> when the value actually differs, so a steady
+    /// SoC looks arbitrarily stale under those. <c>last_reported</c> moves on every poll but needs
+    /// HA 2024.6+, hence the fallbacks. Public for the unit test.
+    /// </summary>
+    public static DateTimeOffset? ReadReportedAt(JsonElement root)
+    {
+        foreach (var property in new[] { "last_reported", "last_updated", "last_changed" })
+        {
+            if (root.TryGetProperty(property, out var element)
+                && element.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(
+                    element.GetString(),
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind,
+                    out var timestamp))
+            {
+                return timestamp;
+            }
+        }
+
         return null;
     }
 
-    public async Task<string?> GetStateAsync(string entityId, CancellationToken ct = default)
+    private async Task<EntityStateReading?> GetEntityStateAsync(string entityId, CancellationToken ct)
     {
         var connection = _connectionManager.GetConnection();
         if (connection == null)
@@ -75,7 +123,7 @@ public class HomeAssistantControl : IHomeAssistantControl
         using var doc = JsonDocument.Parse(content);
         if (doc.RootElement.TryGetProperty("state", out var stateElement))
         {
-            return stateElement.GetString();
+            return new EntityStateReading(stateElement.GetString(), ReadReportedAt(doc.RootElement));
         }
 
         return null;

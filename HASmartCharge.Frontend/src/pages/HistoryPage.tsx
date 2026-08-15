@@ -4,7 +4,28 @@ import { TopBar } from '@/components/layout/TopBar'
 import { UsageChart } from '@/components/charts/UsageChart'
 import { useDeleteSession, useSessionDetail, useSessions } from '@/hooks/useSessions'
 import { usePriceSettings } from '@/hooks/useSettings'
-import { ensureUtcSuffix, formatDateTime, formatDuration, formatKwh, formatMoney, formatPricePerKwh } from '@/lib/utils'
+import {
+  ensureUtcSuffix,
+  formatDateTime,
+  formatDuration,
+  formatEfficiency,
+  formatKwh,
+  formatMoney,
+  formatPricePerKwh,
+} from '@/lib/utils'
+import type { ChargeSessionSummary } from '@/types/sessions'
+
+/** Why this session's efficiency reads the way it does — the SoC pair it was derived from. */
+function efficiencyTitle(session: ChargeSessionSummary): string {
+  if (session.efficiency == null) {
+    return 'No car SoC reading at both the start and the end of this session.'
+  }
+
+  const soc = `SoC ${session.startSocPercent?.toFixed(0)}% → ${session.endSocPercent?.toFixed(0)}% over ${formatKwh(session.totalKwh)} metered.`
+  return session.efficiencyCounted
+    ? `${soc} Counts toward the measured efficiency on the car settings tab.`
+    : `${soc} Too small to measure reliably, so it does not count toward the measured efficiency.`
+}
 
 function SessionRow({ transactionId, currency }: { transactionId: number; currency?: string | null }) {
   const [expanded, setExpanded] = useState(false)
@@ -39,6 +60,13 @@ function SessionRow({ transactionId, currency }: { transactionId: number; curren
         <td className="px-4 py-3 text-right text-white">{formatKwh(session.totalKwh)}</td>
         <td className="px-4 py-3 text-right text-white">{formatMoney(session.totalCost, currency)}</td>
         <td className="px-4 py-3 text-right text-[#8892a4]">{formatPricePerKwh(session.avgPricePerKwh, currency)}</td>
+        <td
+          className={`px-4 py-3 text-right ${session.efficiencyCounted ? 'text-white' : 'text-[#8892a4]'}`}
+          title={efficiencyTitle(session)}
+        >
+          {formatEfficiency(session.efficiency)}
+          {session.efficiency != null && !session.efficiencyCounted && <span className="ml-1 text-xs">*</span>}
+        </td>
         <td className="px-4 py-3 text-right">
           <button
             type="button"
@@ -57,7 +85,7 @@ function SessionRow({ transactionId, currency }: { transactionId: number; curren
       </tr>
       {expanded && (
         <tr className="border-b border-[#2a3042] last:border-0 bg-[#0f1117]/40">
-          <td colSpan={7} className="px-4 py-3">
+          <td colSpan={8} className="px-4 py-3">
             {isLoading ? (
               <div className="flex items-center gap-2 text-sm text-[#8892a4] py-4">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading breakdown…
@@ -146,7 +174,7 @@ export function HistoryPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
+              <table className="w-full min-w-[660px] text-sm">
                 <thead>
                   <tr className="text-xs text-[#8892a4] border-b border-[#2a3042]">
                     <th className="px-4 py-2 w-8" />
@@ -155,6 +183,9 @@ export function HistoryPage() {
                     <th className="px-4 py-2 text-right font-medium">Energy</th>
                     <th className="px-4 py-2 text-right font-medium">Cost</th>
                     <th className="px-4 py-2 text-right font-medium">Avg Price</th>
+                    <th className="px-4 py-2 text-right font-medium" title="Energy that reached the battery, as a share of what the charger metered.">
+                      Efficiency
+                    </th>
                     <th className="px-4 py-2 w-8" />
                   </tr>
                 </thead>
@@ -171,6 +202,12 @@ export function HistoryPage() {
               </div>
             )}
           </div>
+        )}
+
+        {sortedSessions?.some((s) => s.efficiency != null && !s.efficiencyCounted) && (
+          <p className="text-xs text-[#8892a4]">
+            * Too small to measure reliably — shown, but left out of the measured efficiency on the car settings tab.
+          </p>
         )}
       </div>
     </div>

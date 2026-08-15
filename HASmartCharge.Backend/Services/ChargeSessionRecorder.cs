@@ -2,8 +2,10 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
 using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Core.Calibration;
 using HASmartCharge.Core.Costing;
 using Microsoft.EntityFrameworkCore;
 
@@ -46,6 +48,19 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
     [
         ChargePlanStatus.Pending, ChargePlanStatus.Active, ChargePlanStatus.MissedDeadline
     ];
+
+    /// <summary>Cap on the calibration SoC read; see <see cref="TryReadSocAsync"/>.</summary>
+    private static readonly TimeSpan SocReadTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How stale a Home Assistant SoC reading may be to still count as a calibration data point.
+    /// Car integrations poll on their own schedule, so the value read the instant a transaction
+    /// stops is often from minutes before it — and while charging the real SoC kept climbing.
+    /// At 11 kW into a 75 kWh battery SoC rises ~0.24 %/min, so 10 minutes is ~2.4 %-SoC of
+    /// possible error; <see cref="EfficiencyEstimator.MinSocDeltaPercent"/> is what keeps that
+    /// small relative to the session it is measured against.
+    /// </summary>
+    private static readonly TimeSpan MaxSocAge = TimeSpan.FromMinutes(10);
 
     private static string ConnectorKey(string chargePointId, int connectorId) => $"{chargePointId}:{connectorId}";
 
@@ -261,6 +276,14 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
                 .OrderByDescending(p => p.CreatedAt)
                 .FirstOrDefaultAsync();
             session.PlanId = activePlan?.Id;
+            // A reconnect re-announces the same physical session under a new transaction id, but
+            // the meter start (and so the counted grid kWh) is still the original one — reading SoC
+            // again here would capture a mid-charge value and bias the measured efficiency low.
+            // Inherit whatever was captured at the real start; only a genuinely new row reads HA.
+            session.StartSocPercent = existing?.StartSocPercent
+                ?? duplicates.Select(d => d.StartSocPercent).FirstOrDefault(soc => soc is not null)
+                ?? await TryReadSocAsync(scope.ServiceProvider, db);
+            session.EndSocPercent = null;
 
             await db.SaveChangesAsync();
 
@@ -375,6 +398,7 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
             }
 
             session.CompletedAt = stoppedAtUtc;
+            session.EndSocPercent = await TryReadSocAsync(scope.ServiceProvider, db);
             RecomputeTotals(session);
 
             await db.SaveChangesAsync();
@@ -423,6 +447,39 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
             row.EnergyKwh += kwh;
             row.PricePerKwh = prices.GetValueOrDefault(hourStart, 0m); // no price row -> 0-price bucket
             row.Cost = (decimal)row.EnergyKwh * row.PricePerKwh;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort SoC read for efficiency calibration. Never throws and never blocks the
+    /// transaction: HA being down just leaves the session without a data point.
+    /// <para>
+    /// Called while holding the session's write gate, so it is bounded by
+    /// <see cref="SocReadTimeout"/> — the shared HttpClient's 100s default would otherwise stall
+    /// every meter-sample fold for this transaction behind one hanging HA request.
+    /// </para>
+    /// </summary>
+    private async Task<double?> TryReadSocAsync(IServiceProvider services, ApplicationDbContext db)
+    {
+        try
+        {
+            var entityId = await db.CarSettings.AsNoTracking()
+                .Select(c => c.HaSocEntityId)
+                .FirstOrDefaultAsync();
+
+            if (string.IsNullOrWhiteSpace(entityId))
+            {
+                return null;
+            }
+
+            using var cts = new CancellationTokenSource(SocReadTimeout);
+            return await services.GetRequiredService<IHomeAssistantControl>()
+                .GetBatterySocAsync(entityId, MaxSocAge, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read car SoC for session calibration.");
+            return null;
         }
     }
 

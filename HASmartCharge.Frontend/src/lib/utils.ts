@@ -64,6 +64,12 @@ export function formatKwh(value: number | null | undefined): string {
   return `${value.toFixed(2)} kWh`
 }
 
+/** Formats a 0–1 efficiency factor as a percentage, e.g. 0.884 → "88%". */
+export function formatEfficiency(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return '—'
+  return `${(value * 100).toFixed(0)}%`
+}
+
 /** Formats kW with 2 decimals, e.g. "7.40 kW". */
 export function formatKw(value: number | null | undefined): string {
   if (value === null || value === undefined || isNaN(value)) return '—'

@@ -1,6 +1,7 @@
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
 using HASmartCharge.Backend.Services.Mqtt;
+using HASmartCharge.Core.Calibration;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,6 +76,40 @@ public class SettingsController : ControllerBase
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(settings);
+    }
+
+    /// <summary>
+    /// Charge efficiency measured from real sessions (SoC gained × capacity ÷ metered kWh), so the
+    /// hand-entered value can be checked against what the car actually does. Read-only: applying it
+    /// is a normal PUT of the car settings.
+    /// </summary>
+    [HttpGet("car/efficiency-estimate")]
+    public async Task<IActionResult> GetEfficiencyEstimate(CancellationToken cancellationToken)
+    {
+        var car = await _dbContext.CarSettings.AsNoTracking().FirstAsync(cancellationToken);
+
+        // Newest first, capped: the car's real efficiency drifts (season, battery age), so an
+        // unbounded history would keep dragging the estimate toward stale sessions.
+        var samples = await _dbContext.ChargeSessions
+            .AsNoTracking()
+            .Where(s => s.CompletedAt != null && s.StartSocPercent != null && s.EndSocPercent != null)
+            .OrderByDescending(s => s.StartedAt)
+            .Take(30)
+            .Select(s => new EfficiencySample(s.StartSocPercent!.Value, s.EndSocPercent!.Value, s.TotalKwh))
+            .ToListAsync(cancellationToken);
+
+        var estimate = EfficiencyEstimator.Estimate(samples, car.BatteryCapacityKwh);
+
+        return Ok(new
+        {
+            configuredEfficiency = car.ChargeEfficiency,
+            measuredEfficiency = estimate.Efficiency,
+            sessionCount = estimate.SampleCount,
+            candidateSessionCount = samples.Count,
+            batteryKwh = estimate.BatteryKwh,
+            gridKwh = estimate.GridKwh,
+            plausible = EfficiencyEstimator.IsPlausible(estimate.Efficiency)
+        });
     }
 
     [HttpGet("charger")]

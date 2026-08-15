@@ -150,7 +150,7 @@ public sealed class MqttSnapshotBuilder
                 try
                 {
                     var ha = scope.ServiceProvider.GetRequiredService<IHomeAssistantControl>();
-                    _cachedSoc = await ha.GetBatterySocAsync(car.HaSocEntityId, ct);
+                    _cachedSoc = await ha.GetBatterySocAsync(car.HaSocEntityId, ct: ct);
                 }
                 catch (Exception ex)
                 {

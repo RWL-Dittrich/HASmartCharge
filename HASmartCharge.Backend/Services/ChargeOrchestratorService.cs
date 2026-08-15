@@ -119,7 +119,7 @@ public class ChargeOrchestratorService : BackgroundService
             return;
         }
 
-        var soc = await haControl.GetBatterySocAsync(car.HaSocEntityId, ct);
+        var soc = await haControl.GetBatterySocAsync(car.HaSocEntityId, ct: ct);
         if (soc is null)
         {
             _logger.LogWarning("Charge orchestrator tick: battery SoC unavailable, skipping tick.");

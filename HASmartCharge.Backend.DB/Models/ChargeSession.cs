@@ -33,6 +33,14 @@ public class ChargeSession
     /// <summary>Cumulative register (kWh) of the last folded sample; pairs with <see cref="LastSampleAtUtc"/>.</summary>
     public double? LastSampleKwh { get; set; }
 
+    /// <summary>
+    /// Car SoC (%) read from Home Assistant when the transaction started / finished. Null when HA
+    /// is unreachable or no SoC entity is configured. Only used to measure real charge efficiency.
+    /// </summary>
+    public double? StartSocPercent { get; set; }
+
+    public double? EndSocPercent { get; set; }
+
     /// <summary>Plan this session charged under, if any.</summary>
     public int? PlanId { get; set; }
 

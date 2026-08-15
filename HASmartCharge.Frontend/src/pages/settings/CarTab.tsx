@@ -1,10 +1,10 @@
 import { useId, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { useCarSettings, useUpdateCarSettings } from '@/hooks/useSettings'
+import { useCarSettings, useEfficiencyEstimate, useUpdateCarSettings } from '@/hooks/useSettings'
 import { useHaServices } from '@/hooks/useHa'
 import { EntityPicker } from '@/components/settings/EntityPicker'
 import { NumberInput } from '@/components/ui/NumberInput'
-import type { CarSettings } from '@/types/settings'
+import type { CarSettings, EfficiencyEstimate } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
 function isValidJsonOrEmpty(value: string | null): boolean {
@@ -55,10 +55,30 @@ function deriveServiceCall(entityId: string, isStart: boolean): { domain: string
   }
 }
 
+const round2 = (value: number) => Math.round(value * 100) / 100
+
+/**
+ * The estimate blames every error on efficiency — a wrong battery capacity lands here as a wrong
+ * efficiency — so an implausible number points at the capacity field, not at the car.
+ */
+function describeEstimate(estimate: EfficiencyEstimate | undefined): string {
+  if (!estimate) return 'Measuring from charge sessions…'
+  if (estimate.measuredEfficiency == null) {
+    return estimate.candidateSessionCount === 0
+      ? 'No measurement yet — needs completed sessions where Home Assistant had a recent SoC reading at both start and stop.'
+      : `No usable session yet (${estimate.candidateSessionCount} with SoC data, all too short to measure).`
+  }
+
+  const sessions = `${estimate.sessionCount} session${estimate.sessionCount === 1 ? '' : 's'}`
+  const base = `Based on ${sessions}: ${estimate.batteryKwh.toFixed(1)} kWh into the battery from ${estimate.gridKwh.toFixed(1)} kWh metered.`
+  return estimate.plausible ? base : `${base} Outside the plausible 0.5–1.0 range — check battery capacity.`
+}
+
 export function CarTab() {
   const { data: settings, isLoading } = useCarSettings()
   const updateSettings = useUpdateCarSettings()
   const { data: serviceDomains } = useHaServices()
+  const { data: estimate } = useEfficiencyEstimate()
 
   const [form, setForm] = useState<CarSettings | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -109,6 +129,7 @@ export function CarTab() {
   }
 
   const startJsonValid = isValidJsonOrEmpty(form.haStartDataJson)
+  const measuredHint = describeEstimate(estimate)
   const stopJsonValid = isValidJsonOrEmpty(form.haStopDataJson)
   const canSave = startJsonValid && stopJsonValid
 
@@ -164,6 +185,29 @@ export function CarTab() {
             onChange={(v) => setForm({ ...form, chargeEfficiency: v })}
             className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
           />
+          <div className="mt-2 rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2">
+            <div className="flex items-baseline gap-4 text-sm">
+              <span className="text-[#8892a4]">
+                Configured <span className="text-white">{round2(estimate?.configuredEfficiency ?? form.chargeEfficiency)}</span>
+              </span>
+              <span className="text-[#8892a4]">
+                Measured{' '}
+                <span className={estimate?.plausible ? 'text-white' : 'text-amber-400'}>
+                  {estimate?.measuredEfficiency != null ? round2(estimate.measuredEfficiency) : '—'}
+                </span>
+              </span>
+            </div>
+            <span className="mt-1 block text-xs text-[#8892a4]">{measuredHint}</span>
+            {estimate?.measuredEfficiency != null && estimate.plausible && (
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, chargeEfficiency: round2(estimate.measuredEfficiency!) })}
+                className="mt-2 rounded-md border border-[#2a3042] px-2 py-1 text-xs text-white transition-colors hover:bg-[#1a1f2b]"
+              >
+                Use measured ({round2(estimate.measuredEfficiency)})
+              </button>
+            )}
+          </div>
         </label>
       </div>
 

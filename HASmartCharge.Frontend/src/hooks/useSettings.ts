@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getCarSettings,
   getChargerSettings,
+  getEfficiencyEstimate,
   getMqttSettings,
   getPriceSettings,
   updateCarSettings,
@@ -16,6 +17,7 @@ export const settingsKeys = {
   price: ['settings', 'price'] as const,
   car: ['settings', 'car'] as const,
   charger: ['settings', 'charger'] as const,
+  efficiency: ['settings', 'car', 'efficiency-estimate'] as const,
   mqtt: ['settings', 'mqtt'] as const,
 }
 
@@ -39,8 +41,16 @@ export function useUpdateCarSettings() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (settings: CarSettings) => updateCarSettings(settings),
-    onSuccess: (data) => queryClient.setQueryData(settingsKeys.car, data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(settingsKeys.car, data)
+      // The estimate is computed against batteryCapacityKwh, so a capacity edit changes it.
+      queryClient.invalidateQueries({ queryKey: settingsKeys.efficiency })
+    },
   })
+}
+
+export function useEfficiencyEstimate() {
+  return useQuery({ queryKey: settingsKeys.efficiency, queryFn: getEfficiencyEstimate })
 }
 
 export function useChargerSettings() {

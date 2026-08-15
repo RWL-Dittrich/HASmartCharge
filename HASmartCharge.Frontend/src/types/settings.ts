@@ -6,6 +6,19 @@ export interface PriceProviderSettings {
   refreshMinutes: number
 }
 
+/** Charge efficiency measured from real sessions, for checking the configured value. */
+export interface EfficiencyEstimate {
+  configuredEfficiency: number
+  measuredEfficiency: number | null
+  /** Sessions that passed the noise thresholds and fed the estimate. */
+  sessionCount: number
+  /** Completed sessions that had both SoC readings at all. */
+  candidateSessionCount: number
+  batteryKwh: number
+  gridKwh: number
+  plausible: boolean
+}
+
 export interface CarSettings {
   id: number
   name: string

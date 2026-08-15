@@ -35,7 +35,7 @@ public class PlanScheduleService : IPlanScheduleService
         var socPercent = knownSocPercent;
         if (socPercent is null && !string.IsNullOrWhiteSpace(car.HaSocEntityId))
         {
-            socPercent = await _haControl.GetBatterySocAsync(car.HaSocEntityId, ct);
+            socPercent = await _haControl.GetBatterySocAsync(car.HaSocEntityId, ct: ct);
         }
 
         var warning = socPercent is null ? "Battery SoC unavailable" : null;

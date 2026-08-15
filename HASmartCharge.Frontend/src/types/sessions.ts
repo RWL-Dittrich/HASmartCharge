@@ -8,6 +8,12 @@ export interface ChargeSessionSummary {
   totalCost: number
   avgPricePerKwh: number | null
   planId: number | null
+  startSocPercent: number | null
+  endSocPercent: number | null
+  /** Grid → battery ratio for this session alone; null without SoC readings at both ends. */
+  efficiency: number | null
+  /** False when the session was too small/noisy to feed the settings-page estimate. */
+  efficiencyCounted: boolean
 }
 
 export interface HourlyBreakdown {

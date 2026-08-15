@@ -5,8 +5,10 @@ public interface IHomeAssistantControl
     /// <summary>
     /// Gets the state of a battery SoC sensor entity as a double.
     /// Returns null if not connected, the entity is unavailable/unknown, or the state cannot be parsed.
+    /// <paramref name="maxAge"/> additionally rejects a reading Home Assistant last reported longer
+    /// ago than that — for callers measuring against the SoC, where a stale value is worse than none.
     /// </summary>
-    Task<double?> GetBatterySocAsync(string entityId, CancellationToken ct = default);
+    Task<double?> GetBatterySocAsync(string entityId, TimeSpan? maxAge = null, CancellationToken ct = default);
 
     /// <summary>
     /// Gets the raw state string of an entity. Returns null if not connected or the entity is not found.

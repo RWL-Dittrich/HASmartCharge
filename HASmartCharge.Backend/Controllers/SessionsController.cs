@@ -1,5 +1,6 @@
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
+using HASmartCharge.Core.Calibration;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,7 +29,9 @@ public class SessionsController : ControllerBase
             .OrderByDescending(s => s.StartedAt)
             .ToListAsync(ct);
 
-        return Ok(sessions.Select(ToSummaryDto));
+        var batteryKwh = await BatteryCapacityKwhAsync(ct);
+
+        return Ok(sessions.Select(s => ToSummaryDto(s, batteryKwh)));
     }
 
     /// <summary>Session detail including the per-hour cost breakdown.</summary>
@@ -45,6 +48,8 @@ public class SessionsController : ControllerBase
             return NotFound();
         }
 
+        var efficiency = Efficiency(session, await BatteryCapacityKwhAsync(ct));
+
         return Ok(new
         {
             transactionId = session.TransactionId,
@@ -56,6 +61,10 @@ public class SessionsController : ControllerBase
             totalCost = session.TotalCost,
             avgPricePerKwh = AveragePrice(session),
             planId = session.PlanId,
+            startSocPercent = session.StartSocPercent,
+            endSocPercent = session.EndSocPercent,
+            efficiency = efficiency.Value,
+            efficiencyCounted = efficiency.Counted,
             hourlyBreakdown = session.HourlyUsage
                 .OrderBy(u => u.HourStartUtc)
                 .Select(u => new
@@ -85,18 +94,46 @@ public class SessionsController : ControllerBase
         return NoContent();
     }
 
-    private static object ToSummaryDto(ChargeSession session) => new
+    private static object ToSummaryDto(ChargeSession session, double batteryCapacityKwh)
     {
-        transactionId = session.TransactionId,
-        chargePointId = session.ChargePointId,
-        connectorId = session.ConnectorId,
-        startedAt = EnsureUtc(session.StartedAt),
-        completedAt = session.CompletedAt.HasValue ? EnsureUtc(session.CompletedAt.Value) : (DateTime?)null,
-        totalKwh = session.TotalKwh,
-        totalCost = session.TotalCost,
-        avgPricePerKwh = AveragePrice(session),
-        planId = session.PlanId
-    };
+        var efficiency = Efficiency(session, batteryCapacityKwh);
+
+        return new
+        {
+            transactionId = session.TransactionId,
+            chargePointId = session.ChargePointId,
+            connectorId = session.ConnectorId,
+            startedAt = EnsureUtc(session.StartedAt),
+            completedAt = session.CompletedAt.HasValue ? EnsureUtc(session.CompletedAt.Value) : (DateTime?)null,
+            totalKwh = session.TotalKwh,
+            totalCost = session.TotalCost,
+            avgPricePerKwh = AveragePrice(session),
+            planId = session.PlanId,
+            startSocPercent = session.StartSocPercent,
+            endSocPercent = session.EndSocPercent,
+            efficiency = efficiency.Value,
+            efficiencyCounted = efficiency.Counted
+        };
+    }
+
+    private Task<double> BatteryCapacityKwhAsync(CancellationToken ct) =>
+        _dbContext.CarSettings.AsNoTracking().Select(c => c.BatteryCapacityKwh).FirstAsync(ct);
+
+    /// <summary>
+    /// This session's own grid → battery efficiency, plus whether it was clean enough to feed the
+    /// settings-page estimate — a session below the noise thresholds still shows its number, just
+    /// marked as not counted (see <see cref="EfficiencyEstimator"/>).
+    /// </summary>
+    private static (double? Value, bool Counted) Efficiency(ChargeSession session, double batteryCapacityKwh)
+    {
+        if (session.StartSocPercent is not { } startSoc || session.EndSocPercent is not { } endSoc)
+        {
+            return (null, false);
+        }
+
+        var sample = new EfficiencySample(startSoc, endSoc, session.TotalKwh);
+        return (EfficiencyEstimator.Ratio(sample, batteryCapacityKwh), EfficiencyEstimator.IsUsable(sample));
+    }
 
     private static decimal? AveragePrice(ChargeSession session) =>
         session.TotalKwh > 0 ? session.TotalCost / (decimal)session.TotalKwh : null;
