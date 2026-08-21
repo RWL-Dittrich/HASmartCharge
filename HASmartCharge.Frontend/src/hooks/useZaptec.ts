@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { getZaptecChargers, getZaptecStatus } from '@/api/zaptecApi'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { getZaptecChargers, getZaptecStatus, sendZaptecApiCall } from '@/api/zaptecApi'
 
 export const zaptecKeys = {
   status: ['zaptec', 'status'] as const,
@@ -13,4 +13,8 @@ export function useZaptecStatus(enabled: boolean) {
 /** Loaded on demand via refetch() (a "Load chargers" button), not on mount. */
 export function useZaptecChargers() {
   return useQuery({ queryKey: zaptecKeys.chargers, queryFn: getZaptecChargers, enabled: false })
+}
+
+export function useSendZaptecApiCall() {
+  return useMutation({ mutationFn: sendZaptecApiCall })
 }

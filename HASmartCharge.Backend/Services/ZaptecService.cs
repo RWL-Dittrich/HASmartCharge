@@ -403,6 +403,26 @@ public sealed class ZaptecService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Developer/diagnostic escape hatch (Settings → Developer tab): sends an arbitrary request to
+    /// the Zaptec API with the account's bearer token, mirroring the raw-OCPP-call endpoint on the
+    /// OCPP side. Returns the raw status + body instead of throwing on non-2xx — the caller is a
+    /// human reading the response. Nothing in the app may depend on this.
+    /// </summary>
+    public async Task<ZaptecApiCallResult> CallApiAsync(string method, string path, string? jsonBody, CancellationToken ct)
+    {
+        var settings = await GetSettingsAsync(ct);
+        if (string.IsNullOrWhiteSpace(settings.ZaptecUsername) || string.IsNullOrWhiteSpace(settings.ZaptecPassword))
+        {
+            throw new InvalidOperationException("Zaptec credentials are not configured.");
+        }
+
+        var httpMethod = HttpMethod.Parse(method);
+        var response = await SendAsync(httpMethod, path, settings.ZaptecUsername, settings.ZaptecPassword, jsonBody, ct);
+        var text = await response.Content.ReadAsStringAsync(ct);
+        return new ZaptecApiCallResult((int)response.StatusCode, response.IsSuccessStatusCode, text);
+    }
+
     private async Task<ChargerSettings> GetSettingsAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -535,3 +555,6 @@ public sealed class ZaptecService : BackgroundService
 
 /// <summary>One charger as listed by <c>GET /api/chargers</c>.</summary>
 public sealed record ZaptecCharger(string Id, string Name, string? DeviceId, bool IsOnline, int OperatingMode);
+
+/// <summary>Raw result of a developer-tab Zaptec API call: HTTP status + unparsed body text.</summary>
+public sealed record ZaptecApiCallResult(int StatusCode, bool Success, string? Body);

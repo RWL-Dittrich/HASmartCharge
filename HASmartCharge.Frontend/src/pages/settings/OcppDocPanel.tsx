@@ -6,7 +6,7 @@ import { loadOcppDoc } from './ocppDocs'
 
 // No typography plugin in this project, so map each markdown node to the tab's palette by hand.
 // Body copy runs at text-sm/relaxed rather than text-xs: this panel is read, not scanned.
-const MARKDOWN_COMPONENTS: Components = {
+export const MARKDOWN_COMPONENTS: Components = {
   h1: ({ children }) => (
     <h4 className="text-lg font-semibold tracking-tight text-white">{children}</h4>
   ),

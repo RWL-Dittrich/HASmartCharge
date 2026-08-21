@@ -13,3 +13,15 @@ export interface ZaptecStatus {
   isOnline: boolean | null
   operationMode: number | null
 }
+
+export interface ZaptecApiCallRequest {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  path: string
+  body?: string | null
+}
+
+export interface ZaptecApiCallResult {
+  statusCode: number
+  success: boolean
+  body: string | null
+}
