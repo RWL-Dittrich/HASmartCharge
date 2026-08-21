@@ -4,7 +4,7 @@ import { useCarSettings, useEfficiencyEstimate, useUpdateCarSettings } from '@/h
 import { useHaServices } from '@/hooks/useHa'
 import { EntityPicker } from '@/components/settings/EntityPicker'
 import { NumberInput } from '@/components/ui/NumberInput'
-import type { CarSettings, EfficiencyEstimate } from '@/types/settings'
+import type { CarSettings, ChargeControlMode, EfficiencyEstimate } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
 function isValidJsonOrEmpty(value: string | null): boolean {
@@ -128,9 +128,10 @@ export function CarTab() {
     )
   }
 
-  const startJsonValid = isValidJsonOrEmpty(form.haStartDataJson)
+  const isChargerControlled = form.chargeControlMode === 'Charger'
+  const startJsonValid = isChargerControlled || isValidJsonOrEmpty(form.haStartDataJson)
   const measuredHint = describeEstimate(estimate)
-  const stopJsonValid = isValidJsonOrEmpty(form.haStopDataJson)
+  const stopJsonValid = isChargerControlled || isValidJsonOrEmpty(form.haStopDataJson)
   const canSave = startJsonValid && stopJsonValid
 
   async function handleSave() {
@@ -147,6 +148,21 @@ export function CarTab() {
 
   return (
     <div className="space-y-5 max-w-2xl">
+      <label className="text-sm block">
+        <span className="text-[#8892a4] block mb-1">Charge control</span>
+        <select
+          value={form.chargeControlMode}
+          onChange={(e) => setForm({ ...form, chargeControlMode: e.target.value as ChargeControlMode })}
+          className="w-full max-w-xs rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+        >
+          <option value="HomeAssistant">Home Assistant</option>
+          <option value="Charger">Charger</option>
+        </select>
+        <span className="mt-1 block text-xs text-[#8892a4]">
+          'Charger' drives start/stop via OCPP RemoteStart/Stop or Zaptec pause/resume depending on charger type.
+        </span>
+      </label>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Name</span>
@@ -239,6 +255,7 @@ export function CarTab() {
         </div>
       </div>
 
+      {!isChargerControlled && (
       <div className="border-t border-[#2a3042] pt-4 space-y-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">Start charging service</h3>
         <div className="flex items-end gap-2">
@@ -302,7 +319,9 @@ export function CarTab() {
           {!startJsonValid && <span className="text-xs text-red-400">Invalid JSON</span>}
         </label>
       </div>
+      )}
 
+      {!isChargerControlled && (
       <div className="border-t border-[#2a3042] pt-4 space-y-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">Stop charging service</h3>
         <div className="flex items-end gap-2">
@@ -366,6 +385,7 @@ export function CarTab() {
           {!stopJsonValid && <span className="text-xs text-red-400">Invalid JSON</span>}
         </label>
       </div>
+      )}
 
       {saveError && <div className="text-sm text-red-400">{saveError}</div>}
       {savedAt && !saveError && <div className="text-sm text-emerald-400">Saved.</div>}

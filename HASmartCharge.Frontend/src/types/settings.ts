@@ -35,6 +35,8 @@ export interface CarSettings {
   haPluggedInEntityId: string | null
   haChargingStateEntityId: string | null
   haTargetSocEntityId: string | null
+  /** Which backend starts/stops charging: Home Assistant service calls, or the charger's own RemoteStart/Stop / pause-resume. */
+  chargeControlMode: ChargeControlMode
 }
 
 export interface MqttSettings {
@@ -51,6 +53,8 @@ export interface MqttSettings {
 }
 
 export type ChargePowerControlMode = 'ChargingProfile' | 'Configuration'
+export type ChargerType = 'Ocpp' | 'Zaptec'
+export type ChargeControlMode = 'HomeAssistant' | 'Charger'
 
 export const CHARGE_POWER_UNITS = ['A', 'mA', 'W', 'kW'] as const
 export type ChargePowerUnit = (typeof CHARGE_POWER_UNITS)[number]
@@ -61,6 +65,12 @@ export interface ChargerSettings {
   friendlyName: string
   maxChargeKw: number
   connectorId: number
+  /** Which backend drives this charger: Ocpp (default) or Zaptec. */
+  chargerType: ChargerType
+  zaptecUsername: string
+  zaptecPassword: string
+  zaptecChargerId: string
+  zaptecPollSeconds: number
   chargePowerMinKw: number
   chargePowerMaxKw: number
   /** Last power ceiling applied via OCPP; written by POST /api/charger/power, not the settings PUT. */

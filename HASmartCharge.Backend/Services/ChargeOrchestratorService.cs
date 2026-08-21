@@ -2,7 +2,7 @@ using System.Text.Json;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.Services.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace HASmartCharge.Backend.Services;
@@ -163,8 +163,8 @@ public class ChargeOrchestratorService : BackgroundService
         if (!atHome.IsAtHome)
         {
             _logger.LogInformation(
-                "Charge orchestrator tick: plan {PlanId} but car is not plugged into charger {ChargePointId}; schedule refreshed but skipping automatic control.",
-                plan.Id, charger.ChargePointId);
+                "Charge orchestrator tick: plan {PlanId} but car is not plugged into charger {ChargerId}; schedule refreshed but skipping automatic control.",
+                plan.Id, charger.ActiveChargerId);
             return;
         }
 
@@ -289,8 +289,8 @@ public class ChargeOrchestratorService : BackgroundService
         CarSettings car,
         CancellationToken ct)
     {
-        var chargerOnline = statusTracker.GetChargerStatus(charger.ChargePointId)?.IsConnected == true;
-        var connectorPlugged = statusTracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId)?.Status is { } status
+        var chargerOnline = statusTracker.GetChargerStatus(charger.ActiveChargerId)?.IsConnected == true;
+        var connectorPlugged = statusTracker.GetConnectorStatus(charger.ActiveChargerId, charger.ConnectorId)?.Status is { } status
             && _pluggedInStatuses.Contains(status);
 
         var carPlugged = string.IsNullOrWhiteSpace(car.HaPluggedInEntityId)
@@ -331,7 +331,7 @@ public class ChargeOrchestratorService : BackgroundService
     private static async Task<bool> IsChargingAsync(
         ChargerStatusTracker statusTracker, IHomeAssistantControl haControl, ChargerSettings charger, CarSettings car, CancellationToken ct)
     {
-        var connector = statusTracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId);
+        var connector = statusTracker.GetConnectorStatus(charger.ActiveChargerId, charger.ConnectorId);
         var ocppCharging = string.Equals(connector?.Status, "Charging", StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(car.HaChargingStateEntityId))

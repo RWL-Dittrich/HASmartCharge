@@ -1,49 +1,48 @@
-using HASmartCharge.Backend.OCPP.Models;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.Services.Telemetry;
 
 namespace HASmartCharge.Backend.Services;
 
 /// <summary>
 /// Forwards every telemetry callback to a fixed list of sinks. Each sink is invoked
 /// independently with its own try/catch so one sink's failure never blocks, or breaks,
-/// the others (and never throws back into the OCPP session).
+/// the others (and never throws back into the caller).
 /// </summary>
-public class TelemetryFanout : IChargerTelemetrySink
+public class TelemetryFanout : IChargerTelemetry
 {
-    private readonly IReadOnlyList<IChargerTelemetrySink> _sinks;
+    private readonly IReadOnlyList<IChargerTelemetry> _sinks;
     private readonly ILogger<TelemetryFanout> _logger;
 
-    public TelemetryFanout(IEnumerable<IChargerTelemetrySink> sinks, ILogger<TelemetryFanout> logger)
+    public TelemetryFanout(IEnumerable<IChargerTelemetry> sinks, ILogger<TelemetryFanout> logger)
     {
         _sinks = sinks.ToList();
         _logger = logger;
     }
 
-    public void OnConnected(string chargePointId) =>
-        ForEach(s => s.OnConnected(chargePointId));
+    public void OnConnected(string chargerId) =>
+        ForEach(s => s.OnConnected(chargerId));
 
-    public void OnDisconnected(string chargePointId) =>
-        ForEach(s => s.OnDisconnected(chargePointId));
+    public void OnDisconnected(string chargerId) =>
+        ForEach(s => s.OnDisconnected(chargerId));
 
-    public void OnBoot(string chargePointId, ChargerInfo info) =>
-        ForEach(s => s.OnBoot(chargePointId, info));
+    public void OnChargerInfo(string chargerId, ChargerDeviceInfo info) =>
+        ForEach(s => s.OnChargerInfo(chargerId, info));
 
-    public void OnHeartbeat(string chargePointId) =>
-        ForEach(s => s.OnHeartbeat(chargePointId));
+    public void OnHeartbeat(string chargerId) =>
+        ForEach(s => s.OnHeartbeat(chargerId));
 
-    public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode) =>
-        ForEach(s => s.OnConnectorStatus(chargePointId, connectorId, status, errorCode));
+    public void OnConnectorStatus(string chargerId, int connectorId, ConnectorState state, string? errorCode) =>
+        ForEach(s => s.OnConnectorStatus(chargerId, connectorId, state, errorCode));
 
-    public void OnTransactionStarted(string chargePointId, int connectorId, int transactionId, int meterStartWh, string? idTag, DateTimeOffset startedAt) =>
-        ForEach(s => s.OnTransactionStarted(chargePointId, connectorId, transactionId, meterStartWh, idTag, startedAt));
+    public void OnSessionStarted(string chargerId, int connectorId, int sessionId, double meterStartKwh, string? tag, DateTimeOffset startedAt) =>
+        ForEach(s => s.OnSessionStarted(chargerId, connectorId, sessionId, meterStartKwh, tag, startedAt));
 
-    public void OnTransactionStopped(string chargePointId, int transactionId, int meterStopWh, string? reason, DateTimeOffset stoppedAt) =>
-        ForEach(s => s.OnTransactionStopped(chargePointId, transactionId, meterStopWh, reason, stoppedAt));
+    public void OnSessionStopped(string chargerId, int sessionId, double meterStopKwh, string? reason, DateTimeOffset stoppedAt) =>
+        ForEach(s => s.OnSessionStopped(chargerId, sessionId, meterStopKwh, reason, stoppedAt));
 
-    public void OnMeterValues(string chargePointId, MeterValuesRequest values) =>
-        ForEach(s => s.OnMeterValues(chargePointId, values));
+    public void OnMeterSample(string chargerId, int connectorId, ChargerMeterSample sample) =>
+        ForEach(s => s.OnMeterSample(chargerId, connectorId, sample));
 
-    private void ForEach(Action<IChargerTelemetrySink> call)
+    private void ForEach(Action<IChargerTelemetry> call)
     {
         foreach (var sink in _sinks)
         {

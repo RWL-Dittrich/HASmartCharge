@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useChargerSettings, useUpdateChargerSettings } from '@/hooks/useSettings'
 import { useReconfigureCharger, useSetChargerAvailability, useUnlockCharger } from '@/hooks/useCharger'
+import { useZaptecChargers, useZaptecStatus } from '@/hooks/useZaptec'
 import { NumberInput } from '@/components/ui/NumberInput'
 import { CHARGE_POWER_UNITS } from '@/types/settings'
-import type { ChargePowerControlMode, ChargePowerUnit, ChargerSettings } from '@/types/settings'
+import { ensureUtcSuffix } from '@/lib/utils'
+import type { ChargePowerControlMode, ChargePowerUnit, ChargerSettings, ChargerType } from '@/types/settings'
 import { ApiError } from '@/api/client'
 
 function ResultBanner({ label, error }: { label: string; error?: string | null }) {
@@ -33,6 +35,15 @@ export function ChargerTab() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [actionResult, setActionResult] = useState<{ label: string; error?: string } | null>(null)
+
+  const isZaptec = form?.chargerType === 'Zaptec'
+  const { data: zaptecStatus } = useZaptecStatus(isZaptec)
+  const {
+    data: zaptecChargers,
+    refetch: loadZaptecChargers,
+    isFetching: loadingZaptecChargers,
+    error: zaptecChargersError,
+  } = useZaptecChargers()
 
   useEffect(() => {
     if (settings && !form) setForm(settings)
@@ -70,15 +81,109 @@ export function ChargerTab() {
 
   return (
     <div className="space-y-5 max-w-2xl">
+      <label className="text-sm block">
+        <span className="text-[#8892a4] block mb-1">Charger type</span>
+        <select
+          value={form.chargerType}
+          onChange={(e) => setForm({ ...form, chargerType: e.target.value as ChargerType })}
+          className="w-full max-w-xs rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+        >
+          <option value="Ocpp">OCPP 1.6J</option>
+          <option value="Zaptec">Zaptec cloud API</option>
+        </select>
+      </label>
+
+      {isZaptec && (
+        <div className="space-y-4 rounded-md border border-[#2a3042] p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">Zaptec account</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="text-[#8892a4] block mb-1">Username</span>
+              <input
+                value={form.zaptecUsername}
+                onChange={(e) => setForm({ ...form, zaptecUsername: e.target.value })}
+                className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-[#8892a4] block mb-1">Password</span>
+              <input
+                type="password"
+                value={form.zaptecPassword}
+                onChange={(e) => setForm({ ...form, zaptecPassword: e.target.value })}
+                className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="text-[#8892a4] block mb-1">Poll interval (s)</span>
+              <NumberInput
+                min={1}
+                value={form.zaptecPollSeconds}
+                onChange={(v) => setForm({ ...form, zaptecPollSeconds: v })}
+                className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+              />
+            </label>
+          </div>
+          <div className="flex items-end gap-2">
+            <label className="text-sm flex-1">
+              <span className="text-[#8892a4] block mb-1">Charger</span>
+              {zaptecChargers && zaptecChargers.length > 0 ? (
+                <select
+                  value={form.zaptecChargerId}
+                  onChange={(e) => setForm({ ...form, zaptecChargerId: e.target.value })}
+                  className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+                >
+                  <option value="">Select a charger…</option>
+                  {zaptecChargers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.deviceId ?? c.id})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.zaptecChargerId}
+                  onChange={(e) => setForm({ ...form, zaptecChargerId: e.target.value })}
+                  placeholder="Charger ID"
+                  className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 font-mono text-sm text-white outline-none focus:border-blue-500"
+                />
+              )}
+            </label>
+            <button
+              type="button"
+              onClick={() => loadZaptecChargers()}
+              disabled={loadingZaptecChargers}
+              className="rounded-md border border-[#2a3042] px-3 py-2 text-sm text-white transition-colors hover:bg-[#1a1f2b] disabled:opacity-50"
+            >
+              {loadingZaptecChargers ? 'Loading…' : 'Load chargers'}
+            </button>
+          </div>
+          {zaptecChargersError && (
+            <p className="text-xs text-red-400">
+              {zaptecChargersError instanceof ApiError ? zaptecChargersError.message : 'Loading chargers failed.'}
+            </p>
+          )}
+          <p className="text-xs text-[#8892a4]">
+            {zaptecStatus
+              ? `${zaptecStatus.connected ? 'Connected' : 'Not connected'}${
+                  zaptecStatus.lastPollAt ? ` · last poll ${new Date(ensureUtcSuffix(zaptecStatus.lastPollAt)).toLocaleTimeString()}` : ''
+                }${zaptecStatus.lastError ? ` · ${zaptecStatus.lastError}` : ''}`
+              : 'Status unavailable.'}
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="text-sm">
-          <span className="text-[#8892a4] block mb-1">Charge point ID</span>
-          <input
-            value={form.chargePointId}
-            onChange={(e) => setForm({ ...form, chargePointId: e.target.value })}
-            className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
-          />
-        </label>
+        {!isZaptec && (
+          <label className="text-sm">
+            <span className="text-[#8892a4] block mb-1">Charge point ID</span>
+            <input
+              value={form.chargePointId}
+              onChange={(e) => setForm({ ...form, chargePointId: e.target.value })}
+              className="w-full rounded-md border border-[#2a3042] bg-[#0f1117] px-3 py-2 text-white outline-none focus:border-blue-500"
+            />
+          </label>
+        )}
         <label className="text-sm">
           <span className="text-[#8892a4] block mb-1">Friendly name</span>
           <input
@@ -148,10 +253,11 @@ export function ChargerTab() {
         </label>
       </div>
       <p className="text-xs text-[#8892a4]">
-        Bounds for the charge-power slider on the dashboard. The slider always works in kW; how that
-        setpoint reaches the charger is chosen below.
+        Bounds for the charge-power slider on the dashboard. The slider always works in kW
+        {isZaptec ? '; Zaptec applies it as a max charge current (A).' : '; how that setpoint reaches the charger is chosen below.'}
       </p>
 
+      {!isZaptec && (
       <div className="border-t border-[#2a3042] pt-4 space-y-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">
           Power control method
@@ -206,7 +312,9 @@ export function ChargerTab() {
             : 'The backend converts kW to amps (A = W ÷ (phases × voltage)) and sends an OCPP SetChargingProfile to cap delivered current. The charger must support smart charging.'}
         </p>
       </div>
+      )}
 
+      {!isZaptec && (
       <div className="border-t border-[#2a3042] pt-4 space-y-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">
           On-connect configuration
@@ -250,6 +358,7 @@ export function ChargerTab() {
           />
         </label>
       </div>
+      )}
 
       {saveError && <div className="text-sm text-red-400">{saveError}</div>}
       {savedAt && !saveError && <div className="text-sm text-emerald-400">Saved.</div>}
@@ -262,6 +371,7 @@ export function ChargerTab() {
         {updateSettings.isPending ? 'Saving…' : 'Save'}
       </button>
 
+      {!isZaptec && (
       <div className="border-t border-[#2a3042] pt-4 space-y-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-[#8892a4]">Charger commands</h3>
         <div className="flex flex-wrap gap-2">
@@ -296,6 +406,7 @@ export function ChargerTab() {
         </div>
         {actionResult && <ResultBanner label={actionResult.label} error={actionResult.error} />}
       </div>
+      )}
     </div>
   )
 }

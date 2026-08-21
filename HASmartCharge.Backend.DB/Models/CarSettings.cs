@@ -38,4 +38,13 @@ public class CarSettings
 
     /// <summary>Optional entity to push the target SoC to the car.</summary>
     public string? HaTargetSocEntityId { get; set; }
+
+    /// <summary>Which backend starts/stops charging: <see cref="ChargeControlModes.HomeAssistant"/> (default) or <see cref="ChargeControlModes.Charger"/>.</summary>
+    public string ChargeControlMode { get; set; } = ChargeControlModes.HomeAssistant;
+}
+
+public static class ChargeControlModes
+{
+    public const string HomeAssistant = "HomeAssistant";
+    public const string Charger = "Charger";
 }
