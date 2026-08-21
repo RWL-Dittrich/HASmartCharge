@@ -73,6 +73,7 @@ public class SettingsController : ControllerBase
         settings.HaPluggedInEntityId = update.HaPluggedInEntityId;
         settings.HaChargingStateEntityId = update.HaChargingStateEntityId;
         settings.HaTargetSocEntityId = update.HaTargetSocEntityId;
+        settings.ChargeControlMode = update.ChargeControlMode;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return Ok(settings);
@@ -129,6 +130,11 @@ public class SettingsController : ControllerBase
         settings.FriendlyName = update.FriendlyName;
         settings.MaxChargeKw = update.MaxChargeKw;
         settings.ConnectorId = update.ConnectorId;
+        settings.ChargerType = update.ChargerType;
+        settings.ZaptecUsername = update.ZaptecUsername;
+        settings.ZaptecPassword = update.ZaptecPassword;
+        settings.ZaptecChargerId = update.ZaptecChargerId;
+        settings.ZaptecPollSeconds = update.ZaptecPollSeconds;
         // Slider bounds are editable here; ChargePowerSetpointKw is owned by POST /api/charger/power.
         settings.ChargePowerMinKw = update.ChargePowerMinKw;
         settings.ChargePowerMaxKw = update.ChargePowerMaxKw;

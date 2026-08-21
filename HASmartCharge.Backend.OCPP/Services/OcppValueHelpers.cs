@@ -1,32 +1,15 @@
 using System.Text.Json;
-using HASmartCharge.Backend.OCPP.Models;
 
 namespace HASmartCharge.Backend.OCPP.Services;
 
 /// <summary>
-/// Shared helpers for reading OCPP telemetry values and command CALLRESULT payloads.
-/// Extracted from <c>ChargerController</c> so the read API and the MQTT publisher use the
-/// exact same conversion/parsing logic.
+/// Shared helper for reading OCPP command CALLRESULT payloads. The telemetry-value conversion
+/// this class used to hold (Power.Active.Import W→kW, etc.) moved into
+/// HASmartCharge.Backend.Services.Telemetry.OcppTelemetryAdapter — the only place that still
+/// touches OCPP measurand shapes.
 /// </summary>
 public static class OcppValueHelpers
 {
-    /// <summary>OCPP's default unit for Power.Active.Import is watts; convert to kW unless the charger already reports kW.</summary>
-    public static double? ToKw(MeasurandValue? value)
-    {
-        if (value?.AsDecimal() is not { } raw)
-        {
-            return null;
-        }
-
-        var kw = (double)raw;
-        if (!string.Equals(value.Unit, "kW", StringComparison.OrdinalIgnoreCase))
-        {
-            kw /= 1000;
-        }
-
-        return kw;
-    }
-
     /// <summary>Reads the "status" string from an OCPP CALLRESULT payload, if present.</summary>
     public static string? ReadStatus(JsonElement? payload)
     {

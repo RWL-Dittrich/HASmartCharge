@@ -17,6 +17,27 @@ public class ChargerSettings
 
     public int ConnectorId { get; set; } = 1;
 
+    /// <summary>Which backend drives this charger: <see cref="ChargerTypes.Ocpp"/> (default) or <see cref="ChargerTypes.Zaptec"/>.</summary>
+    public string ChargerType { get; set; } = ChargerTypes.Ocpp;
+
+    /// <summary>Zaptec cloud API username. Only used when <see cref="ChargerType"/> is <see cref="ChargerTypes.Zaptec"/>.</summary>
+    public string ZaptecUsername { get; set; } = string.Empty;
+
+    /// <summary>Zaptec cloud API password. Only used when <see cref="ChargerType"/> is <see cref="ChargerTypes.Zaptec"/>.</summary>
+    public string ZaptecPassword { get; set; } = string.Empty;
+
+    /// <summary>Zaptec charger GUID.</summary>
+    public string ZaptecChargerId { get; set; } = string.Empty;
+
+    /// <summary>Polling interval (seconds) for the Zaptec cloud API.</summary>
+    public int ZaptecPollSeconds { get; set; } = 30;
+
+    /// <summary>The charger id actually in use, given <see cref="ChargerType"/>: <see cref="ZaptecChargerId"/> for Zaptec, otherwise <see cref="ChargePointId"/>.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string ActiveChargerId => string.Equals(ChargerType, ChargerTypes.Zaptec, StringComparison.OrdinalIgnoreCase)
+        ? ZaptecChargerId
+        : ChargePointId;
+
     // --- Charge-power slider (dashboard) → OCPP SetChargingProfile ---
 
     /// <summary>Lower bound of the dashboard charge-power slider (kW).</summary>
@@ -68,4 +89,10 @@ public static class ChargePowerControlModes
 {
     public const string ChargingProfile = "ChargingProfile";
     public const string Configuration = "Configuration";
+}
+
+public static class ChargerTypes
+{
+    public const string Ocpp = "Ocpp";
+    public const string Zaptec = "Zaptec";
 }

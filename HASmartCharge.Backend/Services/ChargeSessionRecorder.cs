@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
-using System.Globalization;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
-using HASmartCharge.Backend.OCPP.Models;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.Services.Telemetry;
 using HASmartCharge.Core.Calibration;
 using HASmartCharge.Core.Costing;
 using Microsoft.EntityFrameworkCore;
@@ -25,7 +23,7 @@ namespace HASmartCharge.Backend.Services;
 /// the OCPP session. Per-transaction writes are serialized by a <see cref="SemaphoreSlim"/> gate
 /// so concurrent samples/finalize don't race the same rows.
 /// </summary>
-public class ChargeSessionRecorder : IChargerTelemetrySink
+public class ChargeSessionRecorder : IChargerTelemetry
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ChargeSessionRecorder> _logger;
@@ -41,8 +39,8 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
 
     // Connector states that mean "the transaction is over". SuspendedEV/SuspendedEVSE are
     // deliberately excluded — they're pauses that may resume on the same transaction.
-    private static readonly HashSet<string> _terminalConnectorStates =
-        new(StringComparer.OrdinalIgnoreCase) { "Finishing", "Available", "Faulted" };
+    private static readonly HashSet<ConnectorState> _terminalConnectorStates =
+        new() { ConnectorState.Finishing, ConnectorState.Available, ConnectorState.Faulted };
 
     private static readonly ChargePlanStatus[] _attributablePlanStatuses =
     [
@@ -84,89 +82,73 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
             transactionId, chargePointId, connectorId);
     }
 
-    #region IChargerTelemetrySink
+    #region IChargerTelemetry
 
-    public void OnConnected(string chargePointId)
+    public void OnConnected(string chargerId)
     {
         // No-op: connection lifecycle is ChargerStatusTracker's concern.
     }
 
-    public void OnDisconnected(string chargePointId)
+    public void OnDisconnected(string chargerId)
     {
         // No-op.
     }
 
-    public void OnBoot(string chargePointId, ChargerInfo info)
+    public void OnChargerInfo(string chargerId, ChargerDeviceInfo info)
     {
         // No-op.
     }
 
-    public void OnHeartbeat(string chargePointId)
+    public void OnHeartbeat(string chargerId)
     {
         // No-op: liveness/heartbeat timing is ChargerStatusTracker's concern.
     }
 
-    public void OnConnectorStatus(string chargePointId, int connectorId, string status, string? errorCode)
+    public void OnConnectorStatus(string chargerId, int connectorId, ConnectorState state, string? errorCode)
     {
-        // Some chargers never emit StopTransaction; they signal the end of a transaction by
-        // moving the connector to a terminal state. Finalize the open session on that edge.
-        // TryRemove makes this fire exactly once even though Finishing is usually followed by
-        // Available for the same transaction.
-        if (!_terminalConnectorStates.Contains(status))
+        // Some chargers never emit a stop event; they signal the end of a session by moving the
+        // connector to a terminal state. Finalize the open session on that edge. TryRemove makes
+        // this fire exactly once even though Finishing is usually followed by Available for the
+        // same session.
+        if (!_terminalConnectorStates.Contains(state))
         {
             return;
         }
 
-        if (_connectorTransactions.TryRemove(ConnectorKey(chargePointId, connectorId), out var transactionId))
+        if (_connectorTransactions.TryRemove(ConnectorKey(chargerId, connectorId), out var transactionId))
         {
-            _ = FinalizeSessionAsync(transactionId, DateTimeOffset.UtcNow, meterStopKwhOverride: null, reason: status);
+            _ = FinalizeSessionAsync(transactionId, DateTimeOffset.UtcNow, meterStopKwhOverride: null, reason: state.ToString());
         }
     }
 
-    public void OnTransactionStarted(string chargePointId, int connectorId, int transactionId, int meterStartWh, string? idTag, DateTimeOffset startedAt) =>
-        _ = HandleTransactionStartedAsync(chargePointId, connectorId, transactionId, meterStartWh, startedAt);
+    public void OnSessionStarted(string chargerId, int connectorId, int sessionId, double meterStartKwh, string? tag, DateTimeOffset startedAt) =>
+        _ = HandleTransactionStartedAsync(chargerId, connectorId, sessionId, meterStartKwh, startedAt);
 
-    public void OnMeterValues(string chargePointId, MeterValuesRequest request)
+    public void OnMeterSample(string chargerId, int connectorId, ChargerMeterSample sample)
     {
         try
         {
-            // Resolve by connector: MeterValues carry a connectorId but not necessarily a
-            // transactionId on this hardware.
-            if (!_connectorTransactions.TryGetValue(ConnectorKey(chargePointId, request.ConnectorId), out var transactionId))
+            if (sample.EnergyRegisterKwh is not { } kwh)
+            {
+                return; // nothing to fold — only the energy register drives cost attribution
+            }
+
+            // Resolve by connector: samples carry a connectorId but not necessarily a session id.
+            if (!_connectorTransactions.TryGetValue(ConnectorKey(chargerId, connectorId), out var transactionId))
             {
                 return; // no open transaction on this connector
             }
 
-            foreach (var meterValue in request.MeterValue)
-            foreach (var sampledValue in meterValue.SampledValue)
-            {
-                var measurand = sampledValue.Measurand ?? "Energy.Active.Import.Register";
-                if (measurand != "Energy.Active.Import.Register")
-                {
-                    continue;
-                }
-
-                if (!double.TryParse(sampledValue.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var raw))
-                {
-                    continue;
-                }
-
-                // OCPP 1.6: a missing unit means Wh for energy measurands.
-                var isWh = sampledValue.Unit is null ||
-                           sampledValue.Unit.Equals("wh", StringComparison.OrdinalIgnoreCase);
-                var kwh = isWh ? raw / 1000.0 : raw;
-
-                _ = FoldSampleAsync(transactionId, AsUtc(meterValue.Timestamp), kwh);
-            }
+            _ = FoldSampleAsync(transactionId, sample.TimestampUtc, kwh);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error recording meter values for {ChargePointId}", chargePointId);
+            _logger.LogError(ex, "Error recording meter sample for {ChargerId}", chargerId);
         }
     }
 
-    public void OnTransactionStopped(string chargePointId, int transactionId, int meterStopWh, string? reason, DateTimeOffset stoppedAt) =>
-        _ = FinalizeSessionAsync(transactionId, stoppedAt, meterStopWh / 1000.0, reason);
+    public void OnSessionStopped(string chargerId, int sessionId, double meterStopKwh, string? reason, DateTimeOffset stoppedAt) =>
+        _ = FinalizeSessionAsync(sessionId, stoppedAt, meterStopKwh, reason);
 
     #endregion
 
@@ -206,7 +188,7 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
         }
     }
 
-    private async Task HandleTransactionStartedAsync(string chargePointId, int connectorId, int transactionId, int meterStartWh, DateTimeOffset startedAt)
+    private async Task HandleTransactionStartedAsync(string chargePointId, int connectorId, int transactionId, double meterStartKwh, DateTimeOffset startedAt)
     {
         var gate = Gate(transactionId);
         await gate.WaitAsync();
@@ -216,6 +198,8 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
             var startedAtUtc = startedAt.UtcDateTime;
+            // DB column is an int Wh register (unchanged schema); the neutral contract carries kWh.
+            var meterStartWh = (int)Math.Round(meterStartKwh * 1000.0);
 
             // A charger that reconnects mid-transaction re-sends StartTransaction for the same
             // physical session (same connector + meter start) and gets a fresh transaction id from
@@ -267,9 +251,10 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
             session.MeterStopWh = null;
             session.TotalKwh = 0;
             session.TotalCost = 0;
-            // Seed the attribution cursor at the start reading.
+            // Seed the attribution cursor at the start reading (use the precise kWh value, not
+            // the rounded Wh column, as the cursor).
             session.LastSampleAtUtc = startedAtUtc;
-            session.LastSampleKwh = meterStartWh / 1000.0;
+            session.LastSampleKwh = meterStartKwh;
 
             var activePlan = await db.ChargePlans
                 .Where(p => _attributablePlanStatuses.Contains(p.Status))
@@ -504,11 +489,4 @@ public class ChargeSessionRecorder : IChargerTelemetrySink
 
         _txGates.TryRemove(transactionId, out _);
     }
-
-    private static DateTime AsUtc(DateTime value) => value.Kind switch
-    {
-        DateTimeKind.Utc => value,
-        DateTimeKind.Local => value.ToUniversalTime(),
-        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
-    };
 }

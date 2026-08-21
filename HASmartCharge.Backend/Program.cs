@@ -12,6 +12,7 @@ using HASmartCharge.Backend.OCPP.Infrastructure;
 using HASmartCharge.Backend.OCPP.Services;
 using HASmartCharge.Backend.Services;
 using HASmartCharge.Backend.Services.Mqtt;
+using HASmartCharge.Backend.Services.Telemetry;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -73,21 +74,26 @@ builder.Services.AddSingleton<ISessionManager, SessionManager>();
 builder.Services.AddSingleton<IOcppMessageRouter, OcppMessageRouter>();
 builder.Services.AddSingleton<OcppConnectionOrchestrator>();
 
-// OCPP: telemetry sinks (live in-memory charger status + DB-backed session/cost recording +
-// MQTT wake nudge), fanned out from the single IChargerTelemetrySink the OCPP session layer calls.
+// Charger-neutral telemetry (live in-memory charger status + DB-backed session/cost recording +
+// MQTT wake nudge), fanned out from the single IChargerTelemetry a charger transport calls.
+// OCPP reaches this fanout through OcppTelemetryAdapter, the one place OCPP shapes/unit quirks
+// are translated into the neutral contract; a future Zaptec poller would call the fanout directly.
 builder.Services.AddSingleton<ChargerStatusTracker>();
 builder.Services.AddSingleton<ChargeSessionRecorder>();
 builder.Services.AddSingleton<MqttTelemetryNudge>();
-
-// OCPP: developer-tab live frame log (last 50 frames, broadcast over SignalR)
-builder.Services.AddSingleton<OcppFrameLogBuffer>();
-builder.Services.AddSingleton<IChargerTelemetrySink>(sp => new TelemetryFanout(
+builder.Services.AddSingleton<IChargerTelemetry>(sp => new TelemetryFanout(
     [
         sp.GetRequiredService<ChargerStatusTracker>(),
         sp.GetRequiredService<ChargeSessionRecorder>(),
         sp.GetRequiredService<MqttTelemetryNudge>()
     ],
     sp.GetRequiredService<ILogger<TelemetryFanout>>()));
+
+// OCPP: developer-tab live frame log (last 50 frames, broadcast over SignalR)
+builder.Services.AddSingleton<OcppFrameLogBuffer>();
+builder.Services.AddSingleton<IChargerTelemetrySink>(sp => new OcppTelemetryAdapter(
+    sp.GetRequiredService<IChargerTelemetry>(),
+    sp.GetRequiredService<ILogger<OcppTelemetryAdapter>>()));
 
 // OCPP: outbound command surface (config push, availability, unlock)
 builder.Services.AddSingleton<ICommandSender, SessionCommandSender>();
@@ -111,6 +117,11 @@ builder.Services.AddScoped<IChargeControlService, ChargeControlService>();
 builder.Services.AddSingleton<ManualOverrideState>();
 builder.Services.AddSingleton<PlugStateTracker>();
 builder.Services.AddHostedService<ChargeOrchestratorService>();
+
+// Zaptec: cloud-polled charger transport, feeding the same IChargerTelemetry fanout as OCPP
+// (directly — no OCPP shapes). One singleton, hosted the same way as MqttPublisherService below.
+builder.Services.AddSingleton<ZaptecService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ZaptecService>());
 
 // MQTT: publish charging telemetry to Home Assistant via MQTT discovery + serve the switch command.
 // The publisher is one hosted singleton that also backs the /api/mqtt/status endpoint.

@@ -1,5 +1,6 @@
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.Services.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace HASmartCharge.Backend.Services.Mqtt;
@@ -66,10 +67,10 @@ public sealed class MqttAvailabilityCommandHandler
 
             string? connectorStatus = null;
             var isConnected = false;
-            if (charger is not null && !string.IsNullOrWhiteSpace(charger.ChargePointId))
+            if (charger is not null && !string.IsNullOrWhiteSpace(charger.ActiveChargerId))
             {
-                isConnected = _tracker.GetChargerStatus(charger.ChargePointId)?.IsConnected ?? false;
-                connectorStatus = _tracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId)?.Status;
+                isConnected = _tracker.GetChargerStatus(charger.ActiveChargerId)?.IsConnected ?? false;
+                connectorStatus = _tracker.GetConnectorStatus(charger.ActiveChargerId, charger.ConnectorId)?.Status;
             }
 
             // Snap-back = republish the true current state + availability, which visually bounces HA's

@@ -2,8 +2,7 @@ using System.Globalization;
 using HASmartCharge.Backend.DB;
 using HASmartCharge.Backend.DB.Models;
 using HASmartCharge.Backend.HomeAssistant.Services.Interfaces;
-using HASmartCharge.Backend.OCPP.Models;
-using HASmartCharge.Backend.OCPP.Services;
+using HASmartCharge.Backend.Services.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace HASmartCharge.Backend.Services.Mqtt;
@@ -88,18 +87,18 @@ public sealed class MqttSnapshotBuilder
         ChargerStatus? status = null;
         ConnectorStatus? connector = null;
         ConnectorMeasurands? measurands = null;
-        if (charger is not null && !string.IsNullOrWhiteSpace(charger.ChargePointId))
+        if (charger is not null && !string.IsNullOrWhiteSpace(charger.ActiveChargerId))
         {
-            status = _tracker.GetChargerStatus(charger.ChargePointId);
-            connector = _tracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId);
-            measurands = _tracker.GetConnectorMeasurands(charger.ChargePointId, charger.ConnectorId);
+            status = _tracker.GetChargerStatus(charger.ActiveChargerId);
+            connector = _tracker.GetConnectorStatus(charger.ActiveChargerId, charger.ConnectorId);
+            measurands = _tracker.GetConnectorMeasurands(charger.ActiveChargerId, charger.ConnectorId);
         }
 
         var isConnected = status?.IsConnected ?? false;
 
         // Charger-derived values are only meaningful while connected; otherwise the tracker holds
         // stale readings, so publish them as unknown.
-        var powerKw = isConnected ? OcppValueHelpers.ToKw(measurands?.PowerActiveImport) : null;
+        var powerKw = isConnected ? measurands?.PowerKw : null;
         var connectorStatusStr = isConnected ? connector?.Status ?? Unknown : Unknown;
 
         double? sessionEnergyKwh = null;
@@ -107,9 +106,9 @@ public sealed class MqttSnapshotBuilder
         if (isConnected && connector?.ActiveTransactionId is { } txId)
         {
             if (connector.MeterStartKwh is { } meterStartKwh
-                && measurands?.EnergyActiveImportRegister?.AsDecimal() is { } register)
+                && measurands?.EnergyRegisterKwh is { } register)
             {
-                sessionEnergyKwh = Math.Max(0, (double)register - meterStartKwh);
+                sessionEnergyKwh = Math.Max(0, register - meterStartKwh);
             }
 
             var liveCost = await _recorder.TryGetLiveCostAsync(txId, ct);
@@ -136,7 +135,7 @@ public sealed class MqttSnapshotBuilder
             SwitchState: switchOn ? "ON" : "OFF",
             SwitchAvailable: switchAvailable ? "online" : "offline",
             Currency: currency,
-            ChargePointId: charger?.ChargePointId ?? "");
+            ChargePointId: charger?.ActiveChargerId ?? "");
     }
 
     private async Task<double?> ResolveSocAsync(IServiceScope scope, CarSettings? car, bool isConnected, ConnectorMeasurands? measurands, CancellationToken ct)
@@ -163,8 +162,8 @@ public sealed class MqttSnapshotBuilder
             return _cachedSoc;
         }
 
-        // Fallback: OCPP SoC measurand, only meaningful while connected.
-        return isConnected && measurands?.SoC?.AsDecimal() is { } soc ? (double)soc : null;
+        // Fallback: charger-reported SoC measurand, only meaningful while connected.
+        return isConnected ? measurands?.SocPercent : null;
     }
 
     private static string Num(double? value) => value is { } v ? v.ToString(CultureInfo.InvariantCulture) : Unknown;

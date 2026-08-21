@@ -4,15 +4,28 @@ namespace HASmartCharge.Backend.OCPP.Services;
 
 /// <summary>
 /// Outbound charger control surface exposed to the rest of the app.
-/// Deliberately tiny: availability, unlock, re-pushing config, and a charge-power
-/// ceiling via SetChargingProfile. Charging start/stop is NOT here — that goes
-/// through Home Assistant (plan.md §1). SetChargingProfile only caps the delivered
-/// power; it does not start or stop a transaction.
+/// Availability, unlock, re-pushing config, a charge-power ceiling via SetChargingProfile,
+/// and OCPP RemoteStartTransaction/RemoteStopTransaction. The OCPP start/stop pair is used
+/// ONLY when CarSettings.ChargeControlMode == "Charger" — Home Assistant remains the default
+/// path for charging start/stop (plan.md §1; rule reversed 2026-08-21 by user request).
+/// SetChargingProfile only caps the delivered power; it does not start or stop a transaction.
 /// </summary>
 public interface IChargerControl
 {
     Task<OcppCommandResult> SetConnectorAvailabilityAsync(string chargePointId, int connectorId, bool available, CancellationToken ct = default);
     Task<OcppCommandResult> UnlockConnectorAsync(string chargePointId, int connectorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends RemoteStartTransaction with a fixed idTag ("hasmartcharge") — inbound authorization
+    /// is auto-accept, so any tag works. Only used when CarSettings.ChargeControlMode == "Charger".
+    /// </summary>
+    Task<OcppCommandResult> RemoteStartTransactionAsync(string chargePointId, int connectorId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends RemoteStopTransaction for an already-known transaction id. Only used when
+    /// CarSettings.ChargeControlMode == "Charger".
+    /// </summary>
+    Task<OcppCommandResult> RemoteStopTransactionAsync(string chargePointId, int transactionId, CancellationToken ct = default);
 
     /// <summary>
     /// Caps the current the charger will deliver on the connector to <paramref name="amps"/> A per
@@ -48,6 +61,14 @@ public sealed class ChargerControl : IChargerControl
     public Task<OcppCommandResult> UnlockConnectorAsync(string chargePointId, int connectorId, CancellationToken ct = default) =>
         _commandSender.SendCommandAsync(chargePointId, "UnlockConnector",
             new UnlockConnectorRequest { ConnectorId = connectorId }, ct);
+
+    public Task<OcppCommandResult> RemoteStartTransactionAsync(string chargePointId, int connectorId, CancellationToken ct = default) =>
+        _commandSender.SendCommandAsync(chargePointId, "RemoteStartTransaction",
+            new RemoteStartTransactionRequest { ConnectorId = connectorId, IdTag = "hasmartcharge" }, ct);
+
+    public Task<OcppCommandResult> RemoteStopTransactionAsync(string chargePointId, int transactionId, CancellationToken ct = default) =>
+        _commandSender.SendCommandAsync(chargePointId, "RemoteStopTransaction",
+            new RemoteStopTransactionRequest { TransactionId = transactionId }, ct);
 
     public Task<OcppCommandResult> SetChargingCurrentLimitAsync(string chargePointId, int connectorId, double amps, int numberPhases, CancellationToken ct = default) =>
         _commandSender.SendCommandAsync(chargePointId, "SetChargingProfile",

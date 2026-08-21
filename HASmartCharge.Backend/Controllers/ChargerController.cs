@@ -5,6 +5,7 @@ using HASmartCharge.Backend.OCPP.Models;
 using HASmartCharge.Backend.OCPP.Services;
 using HASmartCharge.Core.Charging;
 using HASmartCharge.Backend.Services;
+using HASmartCharge.Backend.Services.Telemetry;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,25 +24,27 @@ public class ChargerController : ControllerBase
     private readonly IChargerControl _chargerControl;
     private readonly ChargeSessionRecorder _sessionRecorder;
     private readonly ICommandSender _commandSender;
+    private readonly ZaptecService _zaptecService;
 
-    public ChargerController(ApplicationDbContext dbContext, ChargerStatusTracker statusTracker, IChargerControl chargerControl, ChargeSessionRecorder sessionRecorder, ICommandSender commandSender)
+    public ChargerController(ApplicationDbContext dbContext, ChargerStatusTracker statusTracker, IChargerControl chargerControl, ChargeSessionRecorder sessionRecorder, ICommandSender commandSender, ZaptecService zaptecService)
     {
         _dbContext = dbContext;
         _statusTracker = statusTracker;
         _chargerControl = chargerControl;
         _sessionRecorder = sessionRecorder;
         _commandSender = commandSender;
+        _zaptecService = zaptecService;
     }
 
     [HttpGet("status")]
     public async Task<IActionResult> GetStatus(CancellationToken ct)
     {
         var charger = await _dbContext.ChargerSettings.AsNoTracking().FirstOrDefaultAsync(ct);
-        if (charger is null || string.IsNullOrWhiteSpace(charger.ChargePointId))
+        if (charger is null || string.IsNullOrWhiteSpace(charger.ActiveChargerId))
         {
             return Ok(new
             {
-                chargePointId = charger?.ChargePointId ?? string.Empty,
+                chargePointId = charger?.ActiveChargerId ?? string.Empty,
                 connected = false,
                 connectorId = charger?.ConnectorId ?? 0,
                 connectorStatus = (string?)null,
@@ -52,18 +55,18 @@ public class ChargerController : ControllerBase
             });
         }
 
-        var status = _statusTracker.GetChargerStatus(charger.ChargePointId);
-        var connector = _statusTracker.GetConnectorStatus(charger.ChargePointId, charger.ConnectorId);
-        var measurands = _statusTracker.GetConnectorMeasurands(charger.ChargePointId, charger.ConnectorId);
+        var status = _statusTracker.GetChargerStatus(charger.ActiveChargerId);
+        var connector = _statusTracker.GetConnectorStatus(charger.ActiveChargerId, charger.ConnectorId);
+        var measurands = _statusTracker.GetConnectorMeasurands(charger.ActiveChargerId, charger.ConnectorId);
 
         // Session energy = current register minus the register captured at transaction start;
         // the raw register is a lifetime total, not per-session.
         double? sessionEnergyKwh = null;
         if (connector?.ActiveTransactionId is not null
             && connector.MeterStartKwh is { } meterStartKwh
-            && measurands?.EnergyActiveImportRegister?.AsDecimal() is { } register)
+            && measurands?.EnergyRegisterKwh is { } register)
         {
-            sessionEnergyKwh = Math.Max(0, (double)register - meterStartKwh);
+            sessionEnergyKwh = Math.Max(0, register - meterStartKwh);
         }
 
         // Live cost so far for the in-progress transaction (null when idle).
@@ -76,11 +79,11 @@ public class ChargerController : ControllerBase
 
         return Ok(new
         {
-            chargePointId = charger.ChargePointId,
+            chargePointId = charger.ActiveChargerId,
             connected = status?.IsConnected ?? false,
             connectorId = charger.ConnectorId,
             connectorStatus = connector?.Status,
-            currentPowerKw = OcppValueHelpers.ToKw(measurands?.PowerActiveImport),
+            currentPowerKw = measurands?.PowerKw,
             sessionEnergyKwh,
             sessionCost,
             lastHeartbeatAt = status?.LastHeartbeat
@@ -117,7 +120,7 @@ public class ChargerController : ControllerBase
     public async Task<IActionResult> SetPower([FromBody] SetPowerRequest request, CancellationToken ct)
     {
         var charger = await _dbContext.ChargerSettings.FirstOrDefaultAsync(ct);
-        if (charger is null || string.IsNullOrWhiteSpace(charger.ChargePointId))
+        if (charger is null || string.IsNullOrWhiteSpace(charger.ActiveChargerId))
         {
             return NotFound(new { error = "No charger configured" });
         }
@@ -125,7 +128,8 @@ public class ChargerController : ControllerBase
         // Clamp to the configured slider bounds so a stale/crafted request can't exceed them.
         var kw = Math.Clamp(request.Kw, charger.ChargePowerMinKw, charger.ChargePowerMaxKw);
 
-        // UI works in kW; OCPP charging profiles cap current, so convert: A = W / (phases × voltage).
+        // UI works in kW; both OCPP charging profiles and Zaptec's maxChargeCurrent cap current, so
+        // convert: A = W / (phases × voltage).
         var denominator = charger.PhaseCount * charger.SupplyVoltage;
         if (denominator <= 0)
         {
@@ -134,6 +138,33 @@ public class ChargerController : ControllerBase
         }
 
         var amps = Math.Round(kw * 1000.0 / denominator, 1, MidpointRounding.ToZero);
+
+        if (string.Equals(charger.ChargerType, ChargerTypes.Zaptec, StringComparison.OrdinalIgnoreCase))
+        {
+            var zaptecAmps = Math.Clamp(amps, 0, 32);
+            try
+            {
+                await _zaptecService.SetMaxChargeCurrentAsync(zaptecAmps, ct);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = ex.Message });
+            }
+
+            charger.ChargePowerSetpointKw = kw;
+            await _dbContext.SaveChangesAsync(ct);
+
+            return Ok(new
+            {
+                chargePointId = charger.ActiveChargerId,
+                setpointKw = kw,
+                amps = zaptecAmps,
+                status = "Accepted",
+                mode = "Zaptec",
+                configurationKey = (string?)null,
+                configurationValue = (string?)null
+            });
+        }
 
         var viaConfiguration = string.Equals(charger.ChargePowerControlMode,
             ChargePowerControlModes.Configuration, StringComparison.OrdinalIgnoreCase);
