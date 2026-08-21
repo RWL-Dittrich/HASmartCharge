@@ -21,6 +21,21 @@ var builder = WebApplication.CreateBuilder(args);
 // standalone runs simply ignore it. Keys map into IConfiguration (e.g. log_level).
 builder.Configuration.AddJsonFile("/data/options.json", optional: true, reloadOnChange: false);
 
+// Add-on option: verbose_charger_log. Turns up every log category involved in a charger
+// connecting. Needed because appsettings pins Microsoft.AspNetCore to Warning, which hides
+// requests Kestrel refuses *before* the app pipeline runs (TLS bytes on the plain-HTTP OCPP
+// port, a malformed WebSocket handshake) — those never reach OcppController, so its own
+// per-connection log line is absent and the charger just sees an HTTP 400.
+if (builder.Configuration.GetValue<bool?>("verbose_charger_log")
+    ?? builder.Configuration.GetValue("Ocpp:VerboseChargerLog", false))
+{
+    builder.Logging
+        .AddFilter("Microsoft.AspNetCore.Server.Kestrel", LogLevel.Debug)
+        .AddFilter("Microsoft.AspNetCore.WebSockets", LogLevel.Debug)
+        .AddFilter("Microsoft.AspNetCore.Routing", LogLevel.Debug)
+        .AddFilter("HASmartCharge.Backend.OCPP", LogLevel.Debug);
+}
+
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

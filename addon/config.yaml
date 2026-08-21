@@ -1,5 +1,5 @@
 name: HASmartCharge
-version: "0.4.1"
+version: "0.4.2"
 slug: hasmartcharge
 description: >-
   Charge one EV as cheaply as possible by a deadline using EPEX hourly prices,
@@ -25,9 +25,13 @@ ports:
 ports_description:
   "8180/tcp": "OCPP 1.6J WebSocket — point the charger at ws://<HA-IP>:8180/ocpp/1.6/<chargePointId>"
 # Options land in /data/options.json, which the backend loads into IConfiguration.
+# verbose_charger_log: debug logging for Kestrel/WebSocket/OCPP — shows why a charger's
+# handshake was rejected (Kestrel refuses malformed/TLS-on-plain-HTTP before the app sees it).
 options:
+  verbose_charger_log: false
   ocpp_raw_frame_log: false
   ocpp_raw_frame_log_path: /data/ocpp-raw.log
 schema:
+  verbose_charger_log: bool
   ocpp_raw_frame_log: bool
   ocpp_raw_frame_log_path: str
