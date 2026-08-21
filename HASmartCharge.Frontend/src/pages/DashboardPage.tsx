@@ -235,6 +235,8 @@ export function DashboardPage() {
                 Stop
               </button>
             </div>
+            {/* Availability is OCPP ChangeAvailability — Zaptec has no equivalent, so hide it. */}
+            {chargerSettings?.chargerType !== 'Zaptec' && (
             <div className="flex gap-2">
               {chargerStatus?.connectorStatus === 'Unavailable' ? (
                 <button
@@ -269,6 +271,7 @@ export function DashboardPage() {
                 </button>
               )}
             </div>
+            )}
           </div>
 
           {/* Active plan card */}

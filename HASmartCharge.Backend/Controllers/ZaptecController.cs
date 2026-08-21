@@ -58,4 +58,46 @@ public class ZaptecController : ControllerBase
             operationMode = _zaptecService.OperationMode
         });
     }
+
+    private static readonly string[] _allowedApiCallMethods = ["GET", "POST", "PUT", "DELETE"];
+
+    /// <summary>
+    /// Developer/diagnostic escape hatch (Settings → Developer tab): forwards an arbitrary request
+    /// to the Zaptec API under the account's bearer token — the Zaptec twin of
+    /// <c>POST /api/charger/ocpp/call</c>. Restricted to <c>/api/...</c> paths so it can't be
+    /// pointed at the token endpoint. Nothing in the app calls this.
+    /// </summary>
+    [HttpPost("api-call")]
+    public async Task<IActionResult> SendApiCall([FromBody] ZaptecApiCallRequest request, CancellationToken ct)
+    {
+        var method = request.Method?.Trim().ToUpperInvariant() ?? "";
+        if (!_allowedApiCallMethods.Contains(method))
+        {
+            return BadRequest(new { error = "Method must be GET, POST, PUT or DELETE" });
+        }
+
+        // Relative /api/ paths only: keeps the call on the Zaptec REST API (no /oauth/token, no
+        // absolute URLs that would leak the bearer token to another host).
+        if (request.Path is null || !request.Path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+            || request.Path.Contains("..", StringComparison.Ordinal))
+        {
+            return BadRequest(new { error = "Path must be a relative Zaptec API path starting with /api/" });
+        }
+
+        try
+        {
+            var result = await _zaptecService.CallApiAsync(method, request.Path, request.Body, ct);
+            return Ok(new { statusCode = result.StatusCode, success = result.Success, body = result.Body });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
+        }
+    }
+
+    public record ZaptecApiCallRequest(string? Method, string? Path, string? Body);
 }
